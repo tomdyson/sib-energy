@@ -37,6 +37,7 @@ energy-analysis.db
 channel_*.csv
 consumption.csv
 sauna-*.txt
+energy-report.html
 
 # Claude/AI artifacts
 .claude/
