@@ -35,6 +35,10 @@ energy import shelly-csv --days 7
 echo "Fetching Weather data..."
 energy import weather --days 7
 
+# 5. Detect sauna sessions (requires Huum and Weather data)
+echo "Detecting sauna sessions..."
+energy sessions detect
+
 # 5. Update costs
 echo "Updating costs..."
 energy tariff update-costs
