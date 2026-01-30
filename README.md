@@ -149,13 +149,32 @@ You have access to a SQLite database containing home energy usage data. The data
 
 ## Background
 
-This is a three-phase house in the UK. The electricity tariff has cheap overnight rates (midnight to 7am). The household has an electric sauna which is a significant energy consumer.
+This is a three-phase house in the UK. The electricity tariff has cheap overnight rates (midnight to 7am). The household has:
+- An electric sauna (significant energy consumer, ~6kW)
+- A studio on a dedicated circuit, monitored separately via Shelly Pro 3EM
+
+## Data Sources
+
+**IMPORTANT**: The data has two sources with different meanings:
+
+1. **EON** (`source = 'eon'`): Whole-house smart meter data from the electricity supplier.
+   - This is the TOTAL consumption for the entire house.
+   - Half-hourly intervals.
+
+2. **Shelly Studio** (`source = 'shelly_studio_phase'`): Per-minute data from a Shelly Pro 3EM monitoring the studio circuit.
+   - This is a SUBSET of the total (the studio is part of the house).
+   - Aggregated to 30-minute intervals to match EON data.
+   - Use this to understand what proportion of total usage is from the studio.
+
+When analyzing consumption:
+- Use EON for total house consumption
+- Use Shelly to understand studio's share of the total
+- Never add them together (that would double-count studio usage)
 
 ## Database Schema
 
 ### electricity_readings
-Half-hourly smart meter data from EON.
-- `source`: 'eon' (future: 'shelly_phase1' for real-time monitoring)
+- `source`: 'eon' (whole house) or 'shelly_studio_phase' (studio circuit only)
 - `interval_start`: ISO 8601 timestamp with timezone (e.g., '2026-01-15T05:30:00+00:00')
 - `interval_end`: End of 30-minute interval
 - `consumption_kwh`: Energy consumed in this interval
@@ -176,20 +195,36 @@ Detected sauna usage sessions, derived from temperature patterns.
 
 ### tariffs / tariff_rates
 Time-of-use electricity pricing.
-- Cheap rate: midnight to 7am
-- Standard rate: 7am to midnight
+- Cheap rate: midnight to 7am (7p/kWh)
+- Standard rate: 7am to midnight (25p/kWh)
 
 ## Analysis Goals
 
-1. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
-2. **Sauna correlation**: How much electricity does a sauna session consume? Is there a pattern?
-3. **Baseline detection**: What's the house's baseload? Are there anomalies?
-4. **Usage patterns**: Daily/weekly patterns? Seasonal trends?
-5. **Peak identification**: What times have highest consumption? Why?
+1. **Studio impact**: What % of total usage comes from the studio? Which days does it dominate?
+2. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
+3. **Sauna correlation**: The sauna is in the studio - how do sauna sessions affect studio usage?
+4. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
+5. **Usage patterns**: Daily/weekly patterns? When is studio most active?
+6. **Peak identification**: What times have highest consumption? Is it studio-driven?
 
-## Useful Queries to Start
+## Key Queries
 
 ```sql
+-- Studio as percentage of total by day
+SELECT
+    DATE(e.interval_start) as day,
+    ROUND(SUM(e.consumption_kwh), 2) as total_kwh,
+    ROUND(SUM(s.consumption_kwh), 2) as studio_kwh,
+    ROUND(SUM(s.consumption_kwh) / SUM(e.consumption_kwh) * 100, 1) as studio_percent
+FROM electricity_readings e
+LEFT JOIN electricity_readings s ON
+    DATE(e.interval_start) = DATE(s.interval_start)
+    AND TIME(e.interval_start) = TIME(s.interval_start)
+    AND s.source = 'shelly_studio_phase'
+WHERE e.source = 'eon'
+GROUP BY DATE(e.interval_start)
+ORDER BY day DESC;
+
 -- Daily totals with cost breakdown
 SELECT
     DATE(interval_start) as day,
@@ -201,45 +236,50 @@ WHERE source = 'eon'
 GROUP BY DATE(interval_start)
 ORDER BY day DESC;
 
--- Hourly usage patterns (average by hour of day)
+-- Hourly studio usage pattern
 SELECT
     CAST(STRFTIME('%H', interval_start) AS INTEGER) as hour,
     ROUND(AVG(consumption_kwh), 3) as avg_kwh
 FROM electricity_readings
-WHERE source = 'eon'
+WHERE source = 'shelly_studio_phase'
 GROUP BY hour
 ORDER BY hour;
 
--- Sauna sessions with electricity correlation
+-- Days when studio exceeded 50% of total
+SELECT
+    DATE(e.interval_start) as day,
+    ROUND(SUM(e.consumption_kwh), 2) as total_kwh,
+    ROUND(SUM(s.consumption_kwh), 2) as studio_kwh,
+    ROUND(SUM(s.consumption_kwh) / SUM(e.consumption_kwh) * 100, 1) as studio_percent
+FROM electricity_readings e
+LEFT JOIN electricity_readings s ON
+    DATE(e.interval_start) = DATE(s.interval_start)
+    AND TIME(e.interval_start) = TIME(s.interval_start)
+    AND s.source = 'shelly_studio_phase'
+WHERE e.source = 'eon'
+GROUP BY DATE(e.interval_start)
+HAVING studio_percent > 50
+ORDER BY studio_percent DESC;
+
+-- Sauna sessions with studio electricity during session
 SELECT
     s.start_time,
     s.duration_minutes,
     s.peak_temperature_c,
-    ROUND(SUM(e.consumption_kwh), 2) as session_kwh
+    ROUND(SUM(e.consumption_kwh), 2) as studio_kwh_during_session
 FROM sauna_sessions s
 LEFT JOIN electricity_readings e ON
     e.interval_start >= s.start_time
     AND e.interval_start <= s.end_time
-    AND e.source = 'eon'
+    AND e.source = 'shelly_studio_phase'
 GROUP BY s.id
 ORDER BY s.start_time DESC;
-
--- Days with vs without sauna
-SELECT
-    CASE WHEN s.id IS NOT NULL THEN 'sauna' ELSE 'no sauna' END as day_type,
-    COUNT(DISTINCT DATE(e.interval_start)) as days,
-    ROUND(AVG(daily.kwh), 2) as avg_daily_kwh
-FROM (
-    SELECT DATE(interval_start) as day, SUM(consumption_kwh) as kwh
-    FROM electricity_readings WHERE source = 'eon'
-    GROUP BY DATE(interval_start)
-) daily
-LEFT JOIN sauna_sessions s ON DATE(s.start_time) = daily.day
-LEFT JOIN electricity_readings e ON DATE(e.interval_start) = daily.day
-GROUP BY day_type;
 ```
 
-Please explore this data and provide insights about energy usage patterns, cost optimization opportunities, and any anomalies you discover.
+Please explore this data and provide insights about:
+- When does the studio have an outsized impact on overall energy use?
+- Are there opportunities to shift studio usage to cheap overnight hours?
+- How predictable is studio usage compared to total house usage?
 ```
 
 ---
