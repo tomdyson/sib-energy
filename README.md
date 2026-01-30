@@ -6,11 +6,13 @@ A Python tool to collect, store, and analyze domestic electricity usage from mul
 
 - **EON** - Half-hourly smart meter data via [eonapi](https://github.com/tomdyson/eonapi)
 - **Huum Sauna** - Temperature readings via [huum-cli](https://github.com/tomdyson/huum-cli)
-- **Shelly** - 30-minute power monitoring via Shelly Cloud API
+- **Shelly Pro 3EM** - Per-minute power monitoring via local HTTP API (aggregated to 30-min intervals)
 
 ## Installation
 
 ```bash
+git clone https://github.com/tomdyson/sib-energy.git
+cd sib-energy
 python3 -m venv venv
 source venv/bin/activate
 pip install -e .
@@ -25,16 +27,19 @@ energy database init
 # Configure tariffs (edit config/tariffs.yaml first)
 energy tariff load
 
-# Import electricity data
+# Import Shelly Pro 3EM data from local network (last 30 days)
+energy import shelly-csv --days 30
+
+# Or with custom options
+energy import shelly-csv --ip 192.168.6.124 --channel 2 --days 7
+
+# Import EON smart meter data
 uvx eonapi export > consumption.csv
 energy import eon --csv consumption.csv
 
 # Import sauna temperature data
 uvx huum stats --month 2025-01 > sauna.txt
 energy import huum --file sauna.txt
-
-# Import Shelly power monitoring data (requires setup, see config/shelly-setup.md)
-energy import shelly --days 7
 
 # Detect sauna sessions from temperature data
 energy sessions detect
@@ -53,9 +58,8 @@ energy database stats         # Show record counts and date ranges
 
 energy import eon --csv FILE     # Import EON electricity data
 energy import huum --file FILE   # Import Huum sauna temperatures
-energy import shelly [OPTIONS]   # Import Shelly power data (--days N, --from-date, --to-date)
-
-energy shelly list-devices       # List all Shelly devices on your account
+energy import shelly-csv         # Import Shelly Pro 3EM data from local network
+                                 # Options: --ip, --channel, --days
 
 energy tariff load            # Load tariffs from config/tariffs.yaml
 energy tariff update-costs    # Recalculate costs for existing readings
