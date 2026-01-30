@@ -17,7 +17,7 @@ from pathlib import Path
 
 import httpx
 
-from ..db import get_connection
+from ..db import get_connection, init_db
 from ..models import ElectricityReading
 from ..tariffs import calculate_cost
 
@@ -140,8 +140,8 @@ def save_readings(
             if calculate_costs:
                 try:
                     cost = calculate_cost(reading.consumption_kwh, reading.interval_start, db_path)
-                except ValueError:
-                    pass  # No tariff for this time
+                except Exception:
+                    pass  # No tariff for this time, or table doesn't exist
 
             try:
                 conn.execute(
@@ -183,6 +183,9 @@ def fetch_and_import(
     Returns:
         dict with 'imported', 'skipped', and 'raw_rows' counts
     """
+    # Ensure database schema exists
+    init_db(db_path)
+
     # Calculate timestamps
     now = datetime.now(tz=timezone.utc)
     start_ts = int((now - timedelta(days=days)).timestamp())
