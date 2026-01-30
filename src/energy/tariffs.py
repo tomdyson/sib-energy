@@ -9,12 +9,25 @@ import yaml
 from .db import get_connection
 from .models import Tariff, TariffRate
 
-DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config" / "tariffs.yaml"
+
+def get_default_config_path() -> Path:
+    """Find the tariffs.yaml config file, searching multiple locations."""
+    # Try locations in order:
+    candidates = [
+        Path.cwd() / "config" / "tariffs.yaml",  # Current directory
+        Path(__file__).parent.parent.parent.parent / "config" / "tariffs.yaml",  # Package dev location
+        Path.home() / ".config" / "sib-energy" / "tariffs.yaml",  # User config
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    # Default to first candidate (will error if not found)
+    return candidates[0]
 
 
 def load_tariffs_from_yaml(config_path: Path | None = None) -> list[Tariff]:
     """Load tariff definitions from YAML config file."""
-    path = config_path or DEFAULT_CONFIG_PATH
+    path = config_path or get_default_config_path()
     with open(path) as f:
         data = yaml.safe_load(f)
 
