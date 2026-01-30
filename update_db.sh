@@ -34,7 +34,10 @@ TEMP_FILES=()
 
 log() {
     local level="${2:-INFO}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] [$level] $1" | tee -a "$LOG_FILE"
+    local msg="[$(date +'%Y-%m-%d %H:%M:%S')] [$level] $1"
+    echo "$msg"
+    # Try to append to log file, silently fail if we can't
+    { echo "$msg" >> "$LOG_FILE"; } 2>/dev/null || true
 }
 
 log_error() {
@@ -78,7 +81,7 @@ cleanup() {
     local exit_code=$?
 
     # Remove temp files
-    for f in "${TEMP_FILES[@]}"; do
+    for f in "${TEMP_FILES[@]+"${TEMP_FILES[@]}"}"; do
         [[ -f "$f" ]] && rm -f "$f"
     done
 
@@ -152,8 +155,11 @@ trap cleanup EXIT
 
 # Create log directory if it doesn't exist
 if [[ ! -d "$LOG_DIR" ]]; then
-    sudo mkdir -p "$LOG_DIR"
-    sudo chown "$USER:$USER" "$LOG_DIR"
+    if sudo mkdir -p "$LOG_DIR" 2>/dev/null && sudo chown "$USER:$USER" "$LOG_DIR" 2>/dev/null; then
+        log "Created log directory: $LOG_DIR"
+    else
+        log_warn "Could not create log directory, logging to stdout only"
+    fi
 fi
 
 # Start from script directory
