@@ -12,7 +12,7 @@ from rich.table import Table
 
 from . import db
 from .analysis import sessions, summary
-from .collectors import eon, huum, shelly, shelly_csv, shelly_local
+from .collectors import eon, huum, open_meteo, shelly, shelly_csv, shelly_local
 from .tariffs import load_tariffs_from_yaml, save_tariffs_to_db, update_costs_for_readings
 
 console = Console()
@@ -199,6 +199,40 @@ def import_shelly_csv(ctx, ip, channel, days):
         console.print(f"[red]Request timed out - try reducing --days[/red]")
     except Exception as e:
         console.print(f"[red]Failed to import Shelly CSV data: {e}[/red]")
+        raise
+
+
+@import_cmd.command("weather")
+@click.option("--days", default=30, help="Number of days to fetch (default: 30)")
+@click.option("--latitude", default=51.989, help="Location latitude")
+@click.option("--longitude", default=-1.497, help="Location longitude")
+@click.pass_context
+def import_weather(ctx, days, latitude, longitude):
+    """Import outside temperature data from Open-Meteo.
+
+    Fetches historical hourly temperature data for correlation with
+    energy consumption patterns. Data is stored with sensor_id='outside_temperature'.
+
+    Note: The Archive API has a 5-7 day delay.
+    """
+    try:
+        console.print(f"[cyan]Fetching {days} days of weather data for ({latitude}, {longitude})...[/cyan]")
+
+        result = open_meteo.import_weather_data(
+            days=days,
+            latitude=latitude,
+            longitude=longitude,
+            db_path=ctx.obj["db_path"],
+        )
+
+        console.print(f"[green]Imported {result['imported']} temperature readings[/green]")
+        if result["skipped"]:
+            console.print(f"[yellow]Skipped {result['skipped']} duplicates[/yellow]")
+
+    except httpx.HTTPStatusError as e:
+        console.print(f"[red]API error: {e}[/red]")
+    except Exception as e:
+        console.print(f"[red]Failed to import weather data: {e}[/red]")
         raise
 
 

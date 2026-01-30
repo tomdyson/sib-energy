@@ -7,6 +7,7 @@ A Python tool to collect, store, and analyze domestic electricity usage from mul
 - **EON** - Half-hourly smart meter data via [eonapi](https://github.com/tomdyson/eonapi)
 - **Huum Sauna** - Temperature readings via [huum-cli](https://github.com/tomdyson/huum-cli)
 - **Shelly Pro 3EM** - Per-minute power monitoring via local HTTP API (aggregated to 30-min intervals)
+- **Open-Meteo** - Hourly outside temperature from [Open-Meteo Archive API](https://open-meteo.com/) (free, no API key)
 
 ## Installation
 
@@ -45,6 +46,9 @@ energy import huum --file sauna-stats.txt
 # Detect sauna sessions from temperature data
 energy sessions detect
 
+# Import outside temperature data (for energy vs weather correlation)
+energy import weather --days 30
+
 # View reports
 energy summary --date 2025-01-15
 energy report --days 7
@@ -61,6 +65,8 @@ energy import eon --csv FILE     # Import EON electricity data
 energy import huum --file FILE   # Import Huum sauna temperatures
 energy import shelly-csv         # Import Shelly Pro 3EM data from local network
                                  # Options: --ip, --channel, --days
+energy import weather            # Import outside temperature from Open-Meteo
+                                 # Options: --days, --latitude, --longitude
 
 energy tariff load            # Load tariffs from config/tariffs.yaml
 energy tariff update-costs    # Recalculate costs for existing readings
@@ -182,8 +188,8 @@ When analyzing consumption:
 - `cost_pence`: Calculated cost based on time-of-use tariff
 
 ### temperature_readings
-Temperature sensor data, primarily from the sauna.
-- `sensor_id`: 'sauna' (future: other sensors)
+Temperature sensor data from multiple sources.
+- `sensor_id`: 'sauna' (indoor sauna) or 'outside_temperature' (outdoor weather)
 - `timestamp`: ISO 8601 timestamp
 - `temperature_c`: Temperature in Celsius
 
@@ -204,9 +210,10 @@ Time-of-use electricity pricing.
 1. **Studio impact**: What % of total usage comes from the studio? Which days does it dominate?
 2. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
 3. **Sauna correlation**: The sauna is in the studio - how do sauna sessions affect studio usage?
-4. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
-5. **Usage patterns**: Daily/weekly patterns? When is studio most active?
-6. **Peak identification**: What times have highest consumption? Is it studio-driven?
+4. **Weather correlation**: How does outside temperature affect energy consumption? (heating demand)
+5. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
+6. **Usage patterns**: Daily/weekly patterns? When is studio most active?
+7. **Peak identification**: What times have highest consumption? Is it studio-driven?
 
 ## Key Queries
 
