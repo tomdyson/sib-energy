@@ -82,10 +82,14 @@ This is a three-phase house in the UK. The electricity tariff has cheap overnigh
 
 There is an EV, which is connected to the studio circuit. We try to run this during cheap periods as much as possible.
 
-There is a pool, unheated. We run the 1kw pump for 8 hours a day in summer, 6 hours in winter. 
-We try to run this during cheap periods as much as possible. This is on the studio circuit. 
+There is a pool, unheated. We run the 1kw pump for 7 hours a day in summer, 6 hours in winter. 
+It's scheduled to run during cheap periods. This is on the studio circuit. 
 
-The studio (and its water) is heated by an 11kw electric boiler. It's mainly used for Airbnb guests. It's expensive to heat!
+The studio (and its water) is heated by an 11kw electric boiler. 
+It's mainly used for Airbnb guests. It's expensive to heat!
+
+Note: the sauna is on the main house circuit, so you can look at (EON total - Studio) 
+during sauna sessions to see actual heating patterns and costs.
 
 ## Data Sources
 
