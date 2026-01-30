@@ -125,13 +125,15 @@ Temperature sensor data from multiple sources.
 - `temperature_c`: Temperature in Celsius
 
 ### sauna_sessions
-Detected sauna usage sessions, derived from temperature patterns. 
-May not be 100% accurate and may not require power for the duration of the 
-session - only for the initial heating period and to maintain temperature. 
+Detected sauna usage sessions, derived from temperature patterns.
 - `start_time`, `end_time`: Session boundaries
 - `duration_minutes`: Total session length (including heating and cooldown)
 - `peak_temperature_c`: Maximum temperature reached
 - `estimated_kwh`: (Future) Correlated electricity usage
+
+**Important**: Detected durations include cooldown time when the sauna is not drawing power.
+Actual heating is typically 1.5-2.5 hours. To identify active heating periods, look for
+(EON - Studio) slots where consumption > 3 kWh (the 9kW heater draws ~4.5 kWh per 30-min slot).
 
 ### tariffs / tariff_rates
 Time-of-use electricity pricing:
@@ -202,17 +204,30 @@ HAVING studio_percent > 50
 ORDER BY studio_percent DESC;
 
 
--- Sauna sessions with studio electricity during session
+-- Sauna sessions with main house electricity (EON minus studio)
+-- Only counts slots > 3 kWh which indicates active heating
 SELECT
     s.start_time,
-    s.duration_minutes,
     s.peak_temperature_c,
-    ROUND(SUM(e.consumption_kwh), 2) as studio_kwh_during_session
+    COUNT(*) * 30 as heating_mins,
+    ROUND(SUM(e.consumption_kwh - COALESCE(sh.consumption_kwh, 0)), 1) as sauna_kwh,
+    ROUND(SUM(
+        CASE WHEN TIME(e.interval_start) < '07:00'
+             THEN (e.consumption_kwh - COALESCE(sh.consumption_kwh, 0)) * 0.07
+             ELSE (e.consumption_kwh - COALESCE(sh.consumption_kwh, 0)) * 0.25
+        END), 2) as cost_gbp
 FROM sauna_sessions s
 LEFT JOIN electricity_readings e ON
     e.interval_start >= s.start_time
-    AND e.interval_start <= s.end_time
-    AND e.source = 'shelly_studio_phase'
+    AND e.interval_start < datetime(s.start_time, '+180 minutes')
+    AND e.source = 'eon'
+    AND (e.consumption_kwh - COALESCE(
+        (SELECT sh.consumption_kwh FROM electricity_readings sh
+         WHERE sh.interval_start = e.interval_start
+         AND sh.source = 'shelly_studio_phase'), 0)) > 3.0
+LEFT JOIN electricity_readings sh ON
+    e.interval_start = sh.interval_start
+    AND sh.source = 'shelly_studio_phase'
 GROUP BY s.id
 ORDER BY s.start_time DESC;
 
