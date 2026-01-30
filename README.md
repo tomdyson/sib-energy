@@ -7,6 +7,7 @@ A Python tool to collect, store, and analyze domestic electricity usage from mul
 - **EON** - Half-hourly smart meter data via [eonapi](https://github.com/tomdyson/eonapi)
 - **Huum Sauna** - Temperature readings via [huum-cli](https://github.com/tomdyson/huum-cli)
 - **Shelly Pro 3EM** - Per-minute power monitoring via local HTTP API (aggregated to 30-min intervals)
+- **Airbnb Calendar** - iCal reservation feed to correlate energy usage with occupancy
 - **Open-Meteo** - Hourly outside temperature from [Open-Meteo Archive API](https://open-meteo.com/) (free, no API key)
 
 ## Installation
@@ -55,6 +56,12 @@ energy sessions detect
 # Import outside temperature data (for energy vs weather correlation)
 energy import weather --days 30
 
+# Import Airbnb future bookings
+energy import airbnb
+
+# Import Airbnb historical bookings (one-off)
+energy import airbnb-csv --file path/to/airbnb_.csv
+
 # View reports
 energy summary --date 2025-01-15
 energy report --days 7
@@ -73,6 +80,8 @@ energy import shelly-csv         # Import Shelly Pro 3EM data from local network
                                  # Options: --ip, --channel, --days
 energy import weather            # Import outside temperature from Open-Meteo
                                  # Options: --days, --latitude, --longitude
+energy import airbnb             # Fetch future reservations from iCal
+energy import airbnb-csv --file  # Import historical reservations from CSV
 
 energy tariff load            # Load tariffs from config/tariffs.yaml
 energy tariff update-costs    # Recalculate costs for existing readings
@@ -126,6 +135,11 @@ temperature_readings (
 sauna_sessions (
     id, start_time, end_time, duration_minutes,
     peak_temperature_c, estimated_kwh
+)
+
+-- Airbnb reservations
+airbnb_reservations (
+    id, start_date, end_date, status, guest_name
 )
 
 -- Tariff definitions and time-of-use rates
@@ -193,6 +207,12 @@ When analyzing consumption:
 - `consumption_kwh`: Energy consumed in this interval
 - `cost_pence`: Calculated cost based on time-of-use tariff
 
+### airbnb_reservations
+- `start_date`: Check-in date (inclusive)
+- `end_date`: Check-out date (exclusive)
+- `status`: Reservation status
+- `guest_name`: Name of guest (if available)
+
 ### temperature_readings
 Temperature sensor data from multiple sources.
 - `sensor_id`: 'sauna' (indoor sauna) or 'outside_temperature' (outdoor weather)
@@ -214,16 +234,35 @@ Time-of-use electricity pricing.
 ## Analysis Goals
 
 1. **Studio impact**: What % of total usage comes from the studio? Which days does it dominate?
-2. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
-3. **Sauna correlation**: The sauna is in the studio - how do sauna sessions affect studio usage?
-4. **Weather correlation**: How does outside temperature affect energy consumption? (heating demand)
-5. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
-6. **Usage patterns**: Daily/weekly patterns? When is studio most active?
-7. **Peak identification**: What times have highest consumption? Is it studio-driven?
+2. **Airbnb Correlation**: How does energy usage (especially studio) differ when there are guests vs empty?
+3. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
+4. **Sauna correlation**: The sauna is in the studio - how do sauna sessions affect studio usage?
+5. **Weather correlation**: How does outside temperature affect energy consumption? (heating demand)
+6. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
+7. **Usage patterns**: Daily/weekly patterns? When is studio most active?
+8. **Peak identification**: What times have highest consumption? Is it studio-driven?
 
 ## Key Queries
 
 ```sql
+-- Airbnb Occupancy vs Studio Usage
+SELECT 
+    CASE WHEN r.id IS NOT NULL THEN 'Occupied' ELSE 'Vacant' END as occupancy,
+    COUNT(DISTINCT DATE(e.interval_start)) as days,
+    ROUND(AVG(daily_kwh), 2) as avg_daily_kwh,
+    ROUND(AVG(daily_cost), 2) as avg_daily_cost
+FROM (
+    SELECT 
+        DATE(interval_start) as day, 
+        SUM(consumption_kwh) as daily_kwh,
+        SUM(cost_pence)/100.0 as daily_cost
+    FROM electricity_readings 
+    WHERE source = 'shelly_studio_phase'
+    GROUP BY DATE(interval_start)
+) e
+LEFT JOIN airbnb_reservations r ON e.day >= r.start_date AND e.day < r.end_date
+GROUP BY occupancy;
+
 -- Studio as percentage of total by day
 SELECT
     DATE(e.interval_start) as day,
