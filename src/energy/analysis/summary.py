@@ -17,7 +17,7 @@ def get_daily_summary(date: datetime, db_path: Path | None = None) -> dict:
         elec_rows = conn.execute(
             """SELECT interval_start, interval_end, consumption_kwh, cost_pence
                FROM electricity_readings
-               WHERE source = 'eon' AND interval_start >= ? AND interval_start <= ?
+               WHERE interval_start >= ? AND interval_start <= ?
                ORDER BY interval_start""",
             (start.isoformat(), end.isoformat()),
         ).fetchall()
@@ -84,7 +84,7 @@ def get_period_summary(
                    MIN(interval_start) as earliest,
                    MAX(interval_start) as latest
                FROM electricity_readings
-               WHERE source = 'eon' AND interval_start >= ? AND interval_start <= ?""",
+               WHERE interval_start >= ? AND interval_start <= ?""",
             (start.isoformat(), end.isoformat()),
         ).fetchone()
 
@@ -95,7 +95,7 @@ def get_period_summary(
                    SUM(consumption_kwh) as kwh,
                    SUM(cost_pence) as cost
                FROM electricity_readings
-               WHERE source = 'eon' AND interval_start >= ? AND interval_start <= ?
+               WHERE interval_start >= ? AND interval_start <= ?
                GROUP BY DATE(interval_start)
                ORDER BY day""",
             (start.isoformat(), end.isoformat()),
