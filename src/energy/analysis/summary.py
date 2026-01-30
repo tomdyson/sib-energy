@@ -157,13 +157,20 @@ def get_period_summary(
         "studio": {
             "kwh": round(studio_kwh, 2),
             "cost_pounds": round(studio_cost / 100, 2) if studio_cost else 0,
-            "percent_of_total": studio_percent,
+            # Cap at 100% - if higher, EON data is incomplete
+            "percent_of_total": min(studio_percent, 100.0) if total_kwh > 0 else 0,
+            "data_complete": studio_kwh <= total_kwh if total_kwh > 0 else False,
             "daily_breakdown": [
                 {
                     "date": row["day"],
                     "studio_kwh": round(studio_daily_map.get(row["day"], 0), 2),
                     "total_kwh": round(row["kwh"], 2),
-                    "studio_percent": round(studio_daily_map.get(row["day"], 0) / row["kwh"] * 100, 1) if row["kwh"] > 0 else 0,
+                    # Cap daily percent at 100%, mark as incomplete if exceeded
+                    "studio_percent": min(
+                        round(studio_daily_map.get(row["day"], 0) / row["kwh"] * 100, 1) if row["kwh"] > 0 else 0,
+                        100.0
+                    ),
+                    "data_complete": studio_daily_map.get(row["day"], 0) <= row["kwh"],
                 }
                 for row in daily_rows
             ],
