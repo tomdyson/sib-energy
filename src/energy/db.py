@@ -54,7 +54,11 @@ CREATE TABLE IF NOT EXISTS sauna_sessions (
     end_time TEXT NOT NULL,
     duration_minutes INTEGER,
     peak_temperature_c REAL,
-    estimated_kwh REAL
+    estimated_kwh REAL,
+    cheap_kwh REAL,
+    peak_kwh REAL,
+    heating_minutes INTEGER,
+    cost_pence REAL
 );
 
 -- Shelly polling baseline (for local API collectors)
@@ -116,11 +120,45 @@ def get_connection(db_path: Path | None = None) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def migrate_db(db_path: Path | None = None) -> None:
+    """Apply database migrations for existing databases."""
+    with get_connection(db_path) as conn:
+        # Check if sauna_sessions table exists
+        tables = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='sauna_sessions'"
+        ).fetchone()
+
+        if not tables:
+            # Table doesn't exist, skip migrations
+            return
+
+        # Get existing columns
+        cursor = conn.execute("PRAGMA table_info(sauna_sessions)")
+        existing_columns = {row["name"] for row in cursor.fetchall()}
+
+        # Add missing columns
+        columns_to_add = {
+            "cheap_kwh": "REAL",
+            "peak_kwh": "REAL",
+            "heating_minutes": "INTEGER",
+            "cost_pence": "REAL",
+        }
+
+        for col_name, col_type in columns_to_add.items():
+            if col_name not in existing_columns:
+                conn.execute(f"ALTER TABLE sauna_sessions ADD COLUMN {col_name} {col_type}")
+
+        conn.commit()
+
+
 def init_db(db_path: Path | None = None) -> None:
     """Initialize the database schema."""
     with get_connection(db_path) as conn:
         conn.executescript(SCHEMA)
         conn.commit()
+
+    # Apply migrations for existing databases
+    migrate_db(db_path)
 
 
 def get_stats(db_path: Path | None = None) -> dict:
