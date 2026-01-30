@@ -64,11 +64,23 @@ CREATE TABLE IF NOT EXISTS shelly_baseline (
     last_timestamp TEXT NOT NULL
 );
 
+-- Airbnb reservations
+CREATE TABLE IF NOT EXISTS airbnb_reservations (
+    id TEXT PRIMARY KEY,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    status TEXT,
+    guest_name TEXT,
+    source TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_elec_interval ON electricity_readings(interval_start);
 CREATE INDEX IF NOT EXISTS idx_elec_source ON electricity_readings(source, interval_start);
 CREATE INDEX IF NOT EXISTS idx_temp_sensor ON temperature_readings(sensor_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_sauna_start ON sauna_sessions(start_time);
+CREATE INDEX IF NOT EXISTS idx_airbnb_start ON airbnb_reservations(start_date);
 """
 
 
@@ -136,5 +148,13 @@ def get_stats(db_path: Path | None = None) -> dict:
         # Tariffs
         row = conn.execute("SELECT COUNT(*) as count FROM tariffs").fetchone()
         stats["tariffs"] = {"count": row["count"]}
+
+        # Airbnb
+        row = conn.execute("SELECT COUNT(*) as count, MIN(start_date) as earliest, MAX(start_date) as latest FROM airbnb_reservations").fetchone()
+        stats["airbnb"] = {
+            "count": row["count"],
+            "earliest": row["earliest"],
+            "latest": row["latest"],
+        }
 
         return stats

@@ -118,6 +118,12 @@ When analyzing consumption:
 - `consumption_kwh`: Energy consumed in this interval
 - `cost_pence`: Calculated cost based on time-of-use tariff
 
+### airbnb_reservations
+- `start_date`: Check-in date (inclusive)
+- `end_date`: Check-out date (exclusive)
+- `status`: Reservation status
+- `guest_name`: Name of guest (if available)
+
 ### temperature_readings
 Temperature sensor data from multiple sources.
 - `sensor_id`: 'sauna' (indoor sauna) or 'outside_temperature' (outdoor weather)
@@ -142,12 +148,15 @@ Time-of-use electricity pricing:
 ## Analysis Goals
 
 1. **Studio impact**: What % of total usage comes from the studio? Which days does it dominate?
-2. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
-3. **Sauna correlation**: How much do Sauna sessions cost? How much more do they cost when the outside temperature is low?
-4. **Weather correlation**: How does outside temperature affect energy consumption? (heating demand)
-5. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
-6. **Usage patterns**: Daily/weekly patterns? When is studio most active?
-7. **Peak identification**: What times have highest consumption? Is it studio-driven?
+2. **Airbnb Correlation**: How does energy usage (especially studio) differ when there are guests vs empty?
+   - Calculate avg daily studio kWh when occupied vs unoccupied.
+   - Estimate the electricity cost per booking.
+3. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
+4. **Sauna correlation**: How much do Sauna sessions cost? How much more do they cost when the outside temperature is low?
+5. **Weather correlation**: How does outside temperature affect energy consumption? (heating demand)
+6. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
+7. **Usage patterns**: Daily/weekly patterns? When is studio most active?
+8. **Peak identification**: What times have highest consumption? Is it studio-driven?
 
 ## Key Queries
 
@@ -243,6 +252,40 @@ JOIN temperature_readings t
 WHERE e.source = 'eon'
 GROUP BY DATE(e.interval_start)
 ORDER BY avg_temp;
+
+-- Airbnb Occupancy vs Studio Usage
+-- Note: Checking if a day falls within any reservation
+SELECT 
+    CASE WHEN r.id IS NOT NULL THEN 'Occupied' ELSE 'Vacant' END as occupancy,
+    COUNT(DISTINCT DATE(e.interval_start)) as days,
+    ROUND(AVG(daily_kwh), 2) as avg_daily_kwh,
+    ROUND(AVG(daily_cost), 2) as avg_daily_cost
+FROM (
+    SELECT 
+        DATE(interval_start) as day, 
+        SUM(consumption_kwh) as daily_kwh,
+        SUM(cost_pence)/100.0 as daily_cost
+    FROM electricity_readings 
+    WHERE source = 'shelly_studio_phase'
+    GROUP BY DATE(interval_start)
+) e
+LEFT JOIN airbnb_reservations r ON e.day >= r.start_date AND e.day < r.end_date
+GROUP BY occupancy;
+
+-- Energy cost per Airbnb booking
+SELECT 
+    r.guest_name,
+    r.start_date,
+    r.end_date,
+    ROUND(SUM(e.consumption_kwh), 2) as estimated_kwh,
+    ROUND(SUM(e.cost_pence)/100.0, 2) as estimated_cost_gbp
+FROM airbnb_reservations r
+LEFT JOIN electricity_readings e ON 
+    e.source = 'shelly_studio_phase'
+    AND DATE(e.interval_start) >= r.start_date 
+    AND DATE(e.interval_start) < r.end_date
+GROUP BY r.id
+ORDER BY r.start_date DESC;
 ```
 
 Please explore this data and provide insights about:

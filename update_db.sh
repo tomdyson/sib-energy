@@ -63,6 +63,10 @@ energy import shelly-csv --days 7
 log "Fetching Weather data..."
 energy import weather --days 7
 
+# 5. Fetch Airbnb calendar
+log "Fetching Airbnb calendar..."
+energy import airbnb
+
 # 5. Detect sauna sessions (requires Huum and Weather data)
 log "Detecting sauna sessions..."
 energy sessions detect

@@ -12,7 +12,7 @@ from rich.table import Table
 
 from . import db
 from .analysis import sessions, summary
-from .collectors import eon, huum, open_meteo, shelly, shelly_csv, shelly_local
+from .collectors import airbnb, eon, huum, open_meteo, shelly, shelly_csv, shelly_local
 from .tariffs import load_tariffs_from_yaml, save_tariffs_to_db, update_costs_for_readings
 
 console = Console()
@@ -78,6 +78,14 @@ def db_stats(ctx):
     )
 
     table.add_row("Sauna sessions", str(stats["sauna_sessions"]["count"]), "")
+    
+    airbnb = stats.get("airbnb", {"count": 0})
+    table.add_row(
+        "Airbnb reservations", 
+        str(airbnb["count"]), 
+        f"{airbnb.get('earliest') or 'N/A'} → {airbnb.get('latest') or 'N/A'}"
+    )
+
     table.add_row("Tariffs", str(stats["tariffs"]["count"]), "")
 
     console.print(table)
@@ -234,6 +242,37 @@ def import_weather(ctx, days, latitude, longitude):
     except Exception as e:
         console.print(f"[red]Failed to import weather data: {e}[/red]")
         raise
+
+
+@import_cmd.command("airbnb")
+@click.pass_context
+def import_airbnb(ctx):
+    """Fetch future reservations from Airbnb iCal."""
+    # TODO: Move URL to config/env if it changes, but user provided a specific one.
+    url = "https://www.airbnb.co.uk/calendar/ical/52727898.ics?t=628704b831d841ec8ea05b0b203ec621"
+    console.print(f"[cyan]Fetching Airbnb calendar...[/cyan]")
+    try:
+        stats = airbnb.fetch_from_ical(url, ctx.obj["db_path"])
+        console.print(f"[green]Imported {stats['imported']} reservations[/green]")
+        if stats["skipped"]:
+            console.print(f"[yellow]Skipped {stats['skipped']} existing[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Failed to fetch Airbnb calendar: {e}[/red]")
+
+
+@import_cmd.command("airbnb-csv")
+@click.option("--file", "file_path", type=click.Path(exists=True), required=True, help="Path to CSV export")
+@click.pass_context
+def import_airbnb_csv(ctx, file_path):
+    """Import historical reservations from Airbnb CSV."""
+    console.print(f"[cyan]Importing from {file_path}...[/cyan]")
+    try:
+        stats = airbnb.import_from_csv(Path(file_path), ctx.obj["db_path"])
+        console.print(f"[green]Imported {stats['imported']} reservations[/green]")
+        if stats["skipped"]:
+            console.print(f"[yellow]Skipped {stats['skipped']} existing[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Failed to import CSV: {e}[/red]")
 
 
 @cli.group()
