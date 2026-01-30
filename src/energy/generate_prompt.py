@@ -70,13 +70,22 @@ def generate_prompt() -> str:
     tariffs_data = load_tariffs()
     tariff_section = format_tariff_for_section(tariffs_data)
 
-    prompt = f"""You have access to a SQLite database containing home energy usage data. The database is at ~/.local/share/home-energy/energy.db.
+    prompt = f"""You have access to a SQLite database containing home energy usage data. 
+    
+The database is at ~/.local/share/home-energy/energy.db.
 
 ## Background
 
-This is a three-phase house in the UK. The electricity tariff has cheap overnight rates (midnight to 7am). The household has:
-- An electric sauna (significant energy consumer, ~9kW)
+This is a three-phase house in the UK. The electricity tariff has cheap overnight rates. The household has:
+- An electric sauna (significant energy consumer, ~9kW). It is not monitored separately. It is not on the studio circuit.
 - A studio on a dedicated circuit, monitored separately via Shelly Pro 3EM
+
+There is an EV, which is connected to the studio circuit. We try to run this during cheap periods as much as possible.
+
+There is a pool, unheated. We run the 1kw pump for 8 hours a day in summer, 6 hours in winter. 
+We try to run this during cheap periods as much as possible. This is on the studio circuit. 
+
+The studio (and its water) is heated by an 11kw electric boiler. It's mainly used for Airbnb guests. It's expensive to heat!
 
 ## Data Sources
 
@@ -112,7 +121,9 @@ Temperature sensor data from multiple sources.
 - `temperature_c`: Temperature in Celsius
 
 ### sauna_sessions
-Detected sauna usage sessions, derived from temperature patterns.
+Detected sauna usage sessions, derived from temperature patterns. 
+May not be 100% accurate and may not require power for the duration of the 
+session - only for the initial heating period and to maintain temperature. 
 - `start_time`, `end_time`: Session boundaries
 - `duration_minutes`: Total session length (including heating and cooldown)
 - `peak_temperature_c`: Maximum temperature reached
@@ -126,7 +137,7 @@ Time-of-use electricity pricing:
 
 1. **Studio impact**: What % of total usage comes from the studio? Which days does it dominate?
 2. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
-3. **Sauna correlation**: The sauna is in the studio - how do sauna sessions affect studio usage?
+3. **Sauna correlation**: How much do Sauna sessions cost? How much more do they cost when the outside temperature is low?
 4. **Weather correlation**: How does outside temperature affect energy consumption? (heating demand)
 5. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
 6. **Usage patterns**: Daily/weekly patterns? When is studio most active?
