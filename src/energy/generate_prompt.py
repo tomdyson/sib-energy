@@ -106,8 +106,8 @@ When analyzing consumption:
 - `cost_pence`: Calculated cost based on time-of-use tariff
 
 ### temperature_readings
-Temperature sensor data, primarily from the sauna.
-- `sensor_id`: 'sauna' (future: other sensors)
+Temperature sensor data from multiple sources.
+- `sensor_id`: 'sauna' (indoor sauna) or 'outside_temperature' (outdoor weather)
 - `timestamp`: ISO 8601 timestamp
 - `temperature_c`: Temperature in Celsius
 
@@ -127,9 +127,10 @@ Time-of-use electricity pricing:
 1. **Studio impact**: What % of total usage comes from the studio? Which days does it dominate?
 2. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
 3. **Sauna correlation**: The sauna is in the studio - how do sauna sessions affect studio usage?
-4. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
-5. **Usage patterns**: Daily/weekly patterns? When is studio most active?
-6. **Peak identification**: What times have highest consumption? Is it studio-driven?
+4. **Weather correlation**: How does outside temperature affect energy consumption? (heating demand)
+5. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
+6. **Usage patterns**: Daily/weekly patterns? When is studio most active?
+7. **Peak identification**: What times have highest consumption? Is it studio-driven?
 
 ## Key Queries
 
@@ -185,6 +186,7 @@ GROUP BY DATE(e.interval_start)
 HAVING studio_percent > 50
 ORDER BY studio_percent DESC;
 
+
 -- Sauna sessions with studio electricity during session
 SELECT
     s.start_time,
@@ -198,6 +200,19 @@ LEFT JOIN electricity_readings e ON
     AND e.source = 'shelly_studio_phase'
 GROUP BY s.id
 ORDER BY s.start_time DESC;
+
+-- Weather correlation: Daily average temp vs total consumption
+SELECT 
+    DATE(e.interval_start) as day,
+    ROUND(AVG(t.temperature_c), 1) as avg_temp,
+    ROUND(SUM(e.consumption_kwh), 2) as total_kwh
+FROM electricity_readings e
+JOIN temperature_readings t 
+    ON DATE(e.interval_start) = DATE(t.timestamp)
+    AND t.sensor_id = 'outside_temperature'
+WHERE e.source = 'eon'
+GROUP BY DATE(e.interval_start)
+ORDER BY avg_temp;
 ```
 
 Please explore this data and provide insights about:
