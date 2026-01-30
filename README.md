@@ -25,6 +25,9 @@ pip install -e .
 # Initialize the database
 energy database init
 
+# Run the nightly update script manually
+./update_db.sh
+
 # Configure tariffs (edit config/tariffs.yaml first)
 energy tariff load
 
@@ -295,14 +298,8 @@ Please explore this data and provide insights about:
 ## Cron Setup (Raspberry Pi)
 
 ```cron
-# Import Shelly studio data hourly (local network, fast)
-0 * * * * cd /home/tom/sib-energy && ./venv/bin/energy import shelly-csv --days 1
-
-# Fetch EON data daily at 6am (has 24-48h delay anyway)
-0 6 * * * cd /home/tom/sib-energy && ./venv/bin/energy import eon --csv <(uvx eonapi export)
-
-# Recalculate costs after new data arrives
-30 6 * * * cd /home/tom/sib-energy && ./venv/bin/energy tariff update-costs
+# Run the nightly update script (fetches all data and updates costs)
+0 6 * * * /home/tom/sib-energy/update_db.sh >> /var/log/energy-update.log 2>&1
 
 # Generate daily summary
 0 7 * * * cd /home/tom/sib-energy && ./venv/bin/energy summary >> /var/log/energy-summary.log
