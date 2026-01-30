@@ -70,7 +70,7 @@ def generate_prompt() -> str:
     tariffs_data = load_tariffs()
     tariff_section = format_tariff_for_section(tariffs_data)
 
-    prompt = f"""You have access to a SQLite database containing home energy usage data. The database is at ./energy-analysis.db (or ~/.local/share/home-energy/energy.db).
+    prompt = f"""You have access to a SQLite database containing home energy usage data. The database is at ~/.local/share/home-energy/energy.db.
 
 ## Background
 
@@ -218,7 +218,12 @@ ORDER BY avg_temp;
 Please explore this data and provide insights about:
 - When does the studio have an outsized impact on overall energy use?
 - Are there opportunities to shift studio usage to cheap overnight hours?
-- How predictable is studio usage compared to total house usage?"""
+- How predictable is studio usage compared to total house usage?
+
+Then generate a beautiful HTML report with all this data and these 
+insights. Create it as a single standalone file (use CDN links to 
+Tailwind, graphing libraries etc if necessary) that I can upload to S3.
+"""
 
     return prompt
 
