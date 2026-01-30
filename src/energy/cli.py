@@ -11,8 +11,8 @@ from rich.console import Console
 from rich.table import Table
 
 from . import db
-from . import db
 from .analysis import sessions, summary
+from .reports import generate_daily_hourly_report
 from .collectors import airbnb, eon, home_assistant, huum, open_meteo, shelly, shelly_csv, shelly_local
 from .tariffs import load_tariffs_from_yaml, save_tariffs_to_db, update_costs_for_readings
 
@@ -580,6 +580,26 @@ def prompt():
     """
     from .generate_prompt import generate_prompt
     print(generate_prompt())
+
+
+@cli.command("daily-report")
+@click.option("--days", default=30, help="Number of days to include (default: 30)")
+@click.option("--output", "-o", type=click.Path(), help="Output file path (default: daily-hourly-report.html)")
+@click.pass_context
+def daily_report(ctx, days, output):
+    """Generate daily hourly usage pattern report.
+
+    Creates an HTML report showing hourly Studio vs House consumption
+    for each day, with sauna days marked in the titles.
+    """
+    output_path = Path(output) if output else Path("daily-hourly-report.html")
+
+    console.print(f"[cyan]Generating report for last {days} days...[/cyan]")
+
+    html = generate_daily_hourly_report(ctx.obj["db_path"], days=days)
+
+    output_path.write_text(html)
+    console.print(f"[green]Report saved to {output_path}[/green]")
 
 
 # Alias for summary command
