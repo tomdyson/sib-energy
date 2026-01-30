@@ -7,6 +7,7 @@ A Python tool to collect, store, and analyze domestic electricity usage from mul
 - **EON** - Half-hourly smart meter data via [eonapi](https://github.com/tomdyson/eonapi)
 - **Huum Sauna** - Temperature readings via [huum-cli](https://github.com/tomdyson/huum-cli)
 - **Shelly Pro 3EM** - Per-minute power monitoring via local HTTP API (aggregated to 30-min intervals)
+- **Home Assistant** - Studio temperature history via REST API (requires `HA_TOKEN`)
 - **Airbnb Calendar** - iCal reservation feed to correlate energy usage with occupancy
 - **Open-Meteo** - Hourly outside temperature from [Open-Meteo Archive API](https://open-meteo.com/) (free, no API key)
 
@@ -56,6 +57,9 @@ energy sessions detect
 # Import outside temperature data (for energy vs weather correlation)
 energy import weather --days 30
 
+# Import studio temperature from Home Assistant (requires HA_TOKEN in .env)
+energy import ha --days 30
+
 # Import Airbnb future bookings
 energy import airbnb
 
@@ -80,6 +84,8 @@ energy import shelly-csv         # Import Shelly Pro 3EM data from local network
                                  # Options: --ip, --channel, --days
 energy import weather            # Import outside temperature from Open-Meteo
                                  # Options: --days, --latitude, --longitude
+energy import ha                 # Import studio temperature from Home Assistant
+                                 # Options: --days, --entity, --url
 energy import airbnb             # Fetch future reservations from iCal
 energy import airbnb-csv --file  # Import historical reservations from CSV
 
@@ -215,7 +221,7 @@ When analyzing consumption:
 
 ### temperature_readings
 Temperature sensor data from multiple sources.
-- `sensor_id`: 'sauna' (indoor sauna) or 'outside_temperature' (outdoor weather)
+- `sensor_id`: 'sauna' (indoor sauna), 'outside_temperature', or 'studio_temperature'
 - `timestamp`: ISO 8601 timestamp
 - `temperature_c`: Temperature in Celsius
 

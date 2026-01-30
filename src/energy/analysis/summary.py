@@ -46,6 +46,16 @@ def get_daily_summary(date: datetime, db_path: Path | None = None) -> dict:
         # Get sauna sessions for the day
         sessions = get_sessions_for_period(start, end, db_path)
 
+        # Get average studio temperature
+        avg_temp_row = conn.execute(
+            """SELECT AVG(avg_temperature_c) as avg_temp 
+               FROM half_hourly_temperature 
+               WHERE sensor_id = 'studio_temperature' 
+               AND interval_start >= ? AND interval_start <= ?""",
+            (start.isoformat(), end.isoformat()),
+        ).fetchone()
+        avg_temp = round(avg_temp_row["avg_temp"], 1) if avg_temp_row and avg_temp_row["avg_temp"] else None
+
     return {
         "date": date.date().isoformat(),
         "total_kwh": round(total_kwh, 2),
@@ -67,6 +77,7 @@ def get_daily_summary(date: datetime, db_path: Path | None = None) -> dict:
             }
             for s in sessions
         ],
+        "avg_studio_temp_c": avg_temp,
     }
 
 
@@ -126,6 +137,16 @@ def get_period_summary(
 
         # Get sauna sessions
         sessions = get_sessions_for_period(start, end, db_path)
+
+        # Get average studio temperature
+        avg_temp_row = conn.execute(
+            """SELECT AVG(avg_temperature_c) as avg_temp 
+               FROM half_hourly_temperature 
+               WHERE sensor_id = 'studio_temperature' 
+               AND interval_start >= ? AND interval_start <= ?""",
+            (start.isoformat(), end.isoformat()),
+        ).fetchone()
+        avg_temp = round(avg_temp_row["avg_temp"], 1) if avg_temp_row and avg_temp_row["avg_temp"] else None
 
     days_count = len(daily_rows)
     total_kwh = elec_row["total_kwh"] or 0
@@ -192,6 +213,7 @@ def get_period_summary(
                 for s in sessions
             ],
         },
+        "avg_studio_temp_c": avg_temp,
     }
 
 
@@ -203,6 +225,9 @@ def format_daily_summary_text(summary: dict) -> str:
         f"- Estimated cost: £{summary['total_cost_pounds']:.2f}",
         f"- Cheap-rate usage: {summary['cheap_rate_kwh']} kWh ({summary['cheap_rate_percent']}%)",
     ]
+
+    if summary["avg_studio_temp_c"]:
+        lines.append(f"- Avg Studio Temp: {summary['avg_studio_temp_c']}°C")
 
     if summary["peak_half_hour"]["time"]:
         peak_time = datetime.fromisoformat(summary["peak_half_hour"]["time"]).strftime("%H:%M")
@@ -234,6 +259,9 @@ def format_period_summary_text(summary: dict) -> str:
         f"  - Consumption: {summary['averages']['daily_kwh']} kWh/day",
         f"  - Cost: £{summary['averages']['daily_cost_pounds']:.2f}/day",
     ]
+
+    if summary.get("avg_studio_temp_c"):
+        lines.append(f"  - Avg Studio Temp: {summary['avg_studio_temp_c']}°C")
 
     # Studio breakdown (if data available)
     if summary.get("studio", {}).get("kwh", 0) > 0:

@@ -11,8 +11,9 @@ from rich.console import Console
 from rich.table import Table
 
 from . import db
+from . import db
 from .analysis import sessions, summary
-from .collectors import airbnb, eon, huum, open_meteo, shelly, shelly_csv, shelly_local
+from .collectors import airbnb, eon, home_assistant, huum, open_meteo, shelly, shelly_csv, shelly_local
 from .tariffs import load_tariffs_from_yaml, save_tariffs_to_db, update_costs_for_readings
 
 console = Console()
@@ -237,10 +238,38 @@ def import_weather(ctx, days, latitude, longitude):
         if result["skipped"]:
             console.print(f"[yellow]Skipped {result['skipped']} duplicates[/yellow]")
 
-    except httpx.HTTPStatusError as e:
-        console.print(f"[red]API error: {e}[/red]")
     except Exception as e:
         console.print(f"[red]Failed to import weather data: {e}[/red]")
+        raise
+
+
+@import_cmd.command("ha")
+@click.option("--days", default=30, help="Number of days to fetch (default: 30)")
+@click.option("--entity", default="sensor.shelly_studio_therm_temperature", help="HA entity ID")
+@click.option("--url", default="http://192.168.5.120:8123", help="Home Assistant URL")
+@click.pass_context
+def import_ha(ctx, days, entity, url):
+    """Import historical data from Home Assistant."""
+    try:
+        console.print(f"[cyan]Fetching {days} days of history for {entity}...[/cyan]")
+        
+        result = home_assistant.import_ha_data(
+            days=days,
+            entity_id=entity,
+            base_url=url,
+            db_path=ctx.obj["db_path"],
+        )
+        
+        console.print(f"[green]Imported {result['imported']} readings[/green]")
+        if result["skipped"]:
+            console.print(f"[yellow]Skipped {result['skipped']} duplicates[/yellow]")
+
+    except home_assistant.HomeAssistantError as e:
+        console.print(f"[red]Home Assistant Error: {e}[/red]")
+    except Exception as e:
+        console.print(f"[red]Failed to import HA data: {e}[/red]")
+        if "HA_TOKEN" not in os.environ:
+             console.print("[yellow]Hint: Ensure HA_TOKEN environment variable is set.[/yellow]")
         raise
 
 

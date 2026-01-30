@@ -81,6 +81,19 @@ CREATE INDEX IF NOT EXISTS idx_elec_source ON electricity_readings(source, inter
 CREATE INDEX IF NOT EXISTS idx_temp_sensor ON temperature_readings(sensor_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_sauna_start ON sauna_sessions(start_time);
 CREATE INDEX IF NOT EXISTS idx_airbnb_start ON airbnb_reservations(start_date);
+
+-- View: Half-hourly aggregated temperature (aligned with electricity intervals)
+-- Uses rounding logic to bucket irregular readings into 30 minute slots
+CREATE VIEW IF NOT EXISTS half_hourly_temperature AS
+SELECT
+    sensor_id,
+    DATETIME((STRFTIME('%s', timestamp) / 1800) * 1800, 'unixepoch') as interval_start,
+    AVG(temperature_c) as avg_temperature_c,
+    MIN(temperature_c) as min_temperature_c,
+    MAX(temperature_c) as max_temperature_c,
+    COUNT(*) as readings_count
+FROM temperature_readings
+GROUP BY 1, 2;
 """
 
 

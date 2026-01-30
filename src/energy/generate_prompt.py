@@ -136,6 +136,14 @@ Temperature sensor data from multiple sources.
 - `timestamp`: ISO 8601 timestamp
 - `temperature_c`: Temperature in Celsius
 
+### half_hourly_temperature (VIEW)
+Aggregated temperature data aligned to 30-minute intervals (averaged).
+- `sensor_id`: 'sauna', 'outside_temperature', or 'studio_temperature'
+- `interval_start`: Aligned timestamp (e.g., 2026-01-29 10:00:00, 10:30:00)
+- `avg_temperature_c`: Average temperature in this slot
+- `min_temperature_c`: Minimum temperature in this slot
+- `max_temperature_c`: Maximum temperature in this slot
+
 ### sauna_sessions
 Detected sauna usage sessions, derived from temperature patterns and correlated with electricity data.
 - `start_time`, `end_time`: Session boundaries (from temperature sensor)
@@ -250,7 +258,26 @@ JOIN temperature_readings t
     AND t.sensor_id = 'outside_temperature'
 WHERE e.source = 'eon'
 GROUP BY DATE(e.interval_start)
+GROUP BY DATE(e.interval_start)
 ORDER BY avg_temp;
+
+-- Studio Heating Efficiency: Energy vs Outdoor Temp
+-- (How much energy does the studio use per degree of coldness?)
+SELECT 
+    DATE(e.interval_start) as day,
+    ROUND(AVG(t_out.avg_temperature_c), 1) as outdoor_temp,
+    ROUND(AVG(t_in.avg_temperature_c), 1) as studio_temp,
+    ROUND(SUM(e.consumption_kwh), 2) as studio_kwh
+FROM electricity_readings e
+LEFT JOIN half_hourly_temperature t_out ON
+    e.interval_start = t_out.interval_start
+    AND t_out.sensor_id = 'outside_temperature'
+LEFT JOIN half_hourly_temperature t_in ON
+    e.interval_start = t_in.interval_start
+    AND t_in.sensor_id = 'studio_temperature'
+WHERE e.source = 'shelly_studio_phase'
+GROUP BY DATE(e.interval_start)
+ORDER BY outdoor_temp;
 
 -- Airbnb Occupancy vs Studio Usage
 -- Note: Checking if a day falls within any reservation
@@ -293,6 +320,7 @@ Please explore this data and provide insights about:
 - How predictable is studio usage compared to total house usage?
 - What's the cost difference between sauna sessions started during cheap vs peak hours?
 - How much extra electricity does an Airbnb guest add per day?
+- How well does the studio retain heat? (Correlation between inside/outside temp and energy)
 
 Then generate a beautiful HTML report with all this data and these 
 insights. Create it as a single standalone file (use CDN links to 
