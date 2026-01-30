@@ -284,7 +284,7 @@ fi
 # ----------------------------------------------------------------------------
 # 5. Import Airbnb calendar
 # ----------------------------------------------------------------------------
-log "Step 5/7: Fetching Airbnb calendar..."
+log "Step 5/8: Fetching Airbnb calendar..."
 if retry "energy import airbnb" "Airbnb calendar import"; then
     log "Airbnb data imported successfully"
 else
@@ -292,9 +292,19 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-# 6. Detect sauna sessions
+# 6. Import Home Assistant data
 # ----------------------------------------------------------------------------
-log "Step 6/7: Detecting sauna sessions..."
+log "Step 6/8: Fetching Home Assistant data..."
+if retry "energy import ha --days 3" "Home Assistant import"; then
+    log "Home Assistant data imported successfully"
+else
+    ERRORS+=("HA import failed")
+fi
+
+# ----------------------------------------------------------------------------
+# 7. Detect sauna sessions
+# ----------------------------------------------------------------------------
+log "Step 7/8: Detecting sauna sessions..."
 if energy sessions detect; then
     log "Sauna sessions detected successfully"
 else
@@ -303,9 +313,9 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-# 7. Update costs
+# 8. Update costs
 # ----------------------------------------------------------------------------
-log "Step 7/7: Updating costs..."
+log "Step 8/8: Updating costs..."
 if energy tariff update-costs; then
     log "Costs updated successfully"
 else
@@ -320,7 +330,7 @@ log "=========================================="
 
 if [[ ${#ERRORS[@]} -eq 0 ]]; then
     log "Update completed successfully"
-    notify_success "All 7 steps completed successfully"
+    notify_success "All 8 steps completed successfully"
 else
     log_error "Update completed with ${#ERRORS[@]} error(s): ${ERRORS[*]}"
     notify_failure "Completed with errors: ${ERRORS[*]}"
