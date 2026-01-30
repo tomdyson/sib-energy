@@ -132,9 +132,12 @@ When analyzing consumption:
 
 ### temperature_readings
 Temperature sensor data from multiple sources.
-- `sensor_id`: 'sauna' (indoor sauna) or 'outside_temperature' (outdoor weather)
+- `sensor_id`: 'sauna', 'outside_temperature', or 'studio_temperature'
 - `timestamp`: ISO 8601 timestamp
 - `temperature_c`: Temperature in Celsius
+
+Note: `studio_temperature` data may only be available for recent dates (sensor added later).
+Check availability with: `SELECT MIN(timestamp), MAX(timestamp) FROM temperature_readings WHERE sensor_id='studio_temperature'`
 
 ### half_hourly_temperature (VIEW)
 Aggregated temperature data aligned to 30-minute intervals (averaged).
@@ -171,13 +174,18 @@ Time-of-use electricity pricing:
    - Estimate the electricity cost per booking.
 3. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
    - Focus on PEAK HOUR usage that could move to cheap hours (e.g., evening boiler demand for radiators/hot water)
-   - Don't flag overnight usage as a problem - that's when EV/pool SHOULD run
-4. **Sauna correlation**: How much do Sauna sessions cost? How much more do they cost when the outside temperature is low?
+   - Don't flag overnight studio circuit usage as a problem - that's when EV/pool SHOULD run
+4. **Sauna correlation**: How much do Sauna sessions cost? Compare cheap-hour vs peak-hour starts.
 5. **Weather correlation**: How does outside temperature affect energy consumption? (heating demand)
 6. **Baseline detection**: What's the house's baseload? What's the studio's baseload when idle?
 7. **Usage patterns**: Daily/weekly patterns? When is studio most active?
 8. **Peak identification**: What times have highest consumption? Is it studio-driven?
    - The evening peak (17:00-19:00) is typically the most expensive period to optimize
+9. **Anomaly detection**: Identify days with unusually high usage for their temperature band.
+   - Calculate kWh per degree below 15°C as an efficiency metric
+   - Compare overnight (00:00-07:00) studio circuit usage between similar days to spot large EV charging events
+10. **Studio heat retention**: Analyze the relationship between studio internal temp, outdoor temp, and energy used.
+    - Look for the daily heating pattern (evening heating → overnight loss → morning recovery)
 
 ## Key Queries
 
@@ -248,16 +256,15 @@ FROM sauna_sessions
 ORDER BY start_time DESC;
 
 -- Weather correlation: Daily average temp vs total consumption
-SELECT 
+-- Note: Use subquery for outdoor temp to avoid row multiplication from JOIN
+SELECT
     DATE(e.interval_start) as day,
-    ROUND(AVG(t.temperature_c), 1) as avg_temp,
+    ROUND((SELECT AVG(temperature_c) FROM temperature_readings t
+           WHERE DATE(t.timestamp) = DATE(e.interval_start)
+           AND t.sensor_id = 'outside_temperature'), 1) as avg_temp,
     ROUND(SUM(e.consumption_kwh), 2) as total_kwh
 FROM electricity_readings e
-JOIN temperature_readings t 
-    ON DATE(e.interval_start) = DATE(t.timestamp)
-    AND t.sensor_id = 'outside_temperature'
 WHERE e.source = 'eon'
-GROUP BY DATE(e.interval_start)
 GROUP BY DATE(e.interval_start)
 ORDER BY avg_temp;
 
@@ -298,20 +305,87 @@ FROM (
 LEFT JOIN airbnb_reservations r ON e.day >= r.start_date AND e.day < r.end_date
 GROUP BY occupancy;
 
--- Energy cost per Airbnb booking
-SELECT 
+-- Energy cost per Airbnb booking (past bookings with data only)
+SELECT
     r.guest_name,
     r.start_date,
     r.end_date,
+    JULIANDAY(r.end_date) - JULIANDAY(r.start_date) as nights,
     ROUND(SUM(e.consumption_kwh), 2) as estimated_kwh,
     ROUND(SUM(e.cost_pence)/100.0, 2) as estimated_cost_gbp
 FROM airbnb_reservations r
-LEFT JOIN electricity_readings e ON 
+LEFT JOIN electricity_readings e ON
     e.source = 'shelly_studio_phase'
-    AND DATE(e.interval_start) >= r.start_date 
+    AND DATE(e.interval_start) >= r.start_date
     AND DATE(e.interval_start) < r.end_date
+WHERE r.end_date <= DATE('now')  -- Only past bookings
 GROUP BY r.id
+HAVING estimated_kwh > 0  -- Only bookings with electricity data
 ORDER BY r.start_date DESC;
+
+-- Sauna session costs: cheap vs peak rate starts
+SELECT
+    CASE WHEN CAST(STRFTIME('%H', start_time) AS INTEGER) < 7
+         THEN 'Cheap (before 7am)' ELSE 'Peak (7am onwards)' END as start_period,
+    COUNT(*) as sessions,
+    ROUND(AVG(heating_minutes), 0) as avg_heat_mins,
+    ROUND(AVG(estimated_kwh), 2) as avg_kwh,
+    ROUND(AVG(cost_pence)/100, 2) as avg_cost_gbp,
+    ROUND(MIN(cost_pence)/100, 2) as min_cost_gbp,
+    ROUND(MAX(cost_pence)/100, 2) as max_cost_gbp
+FROM sauna_sessions
+GROUP BY start_period;
+
+-- Studio cost by outdoor temperature band
+WITH daily_data AS (
+    SELECT
+        DATE(e.interval_start) as day,
+        (SELECT AVG(temperature_c) FROM temperature_readings t
+         WHERE DATE(t.timestamp) = DATE(e.interval_start)
+         AND t.sensor_id = 'outside_temperature') as outdoor_temp_c,
+        SUM(e.consumption_kwh) as studio_kwh,
+        SUM(e.cost_pence)/100.0 as studio_cost_gbp
+    FROM electricity_readings e
+    WHERE e.source = 'shelly_studio_phase'
+    GROUP BY DATE(e.interval_start)
+)
+SELECT
+    CASE
+        WHEN outdoor_temp_c < 0 THEN 'Below 0°C'
+        WHEN outdoor_temp_c < 3 THEN '0-3°C'
+        WHEN outdoor_temp_c < 6 THEN '3-6°C'
+        ELSE 'Above 6°C'
+    END as temp_band,
+    COUNT(*) as days,
+    ROUND(AVG(studio_kwh), 2) as avg_kwh,
+    ROUND(AVG(studio_cost_gbp), 2) as avg_cost_gbp
+FROM daily_data
+WHERE outdoor_temp_c IS NOT NULL
+GROUP BY temp_band
+ORDER BY MIN(outdoor_temp_c);
+
+-- Anomaly detection: days with high usage for their temperature
+-- (kWh per degree below 15°C - higher values are less efficient/anomalous)
+WITH daily_data AS (
+    SELECT
+        DATE(e.interval_start) as day,
+        (SELECT AVG(temperature_c) FROM temperature_readings t
+         WHERE DATE(t.timestamp) = DATE(e.interval_start)
+         AND t.sensor_id = 'outside_temperature') as outdoor_temp_c,
+        SUM(e.consumption_kwh) as studio_kwh
+    FROM electricity_readings e
+    WHERE e.source = 'shelly_studio_phase'
+    GROUP BY DATE(e.interval_start)
+)
+SELECT
+    day,
+    ROUND(outdoor_temp_c, 1) as temp_c,
+    ROUND(studio_kwh, 2) as kwh,
+    ROUND(studio_kwh / (15 - outdoor_temp_c), 2) as kwh_per_degree_below_15c
+FROM daily_data
+WHERE outdoor_temp_c IS NOT NULL AND outdoor_temp_c < 15
+ORDER BY kwh_per_degree_below_15c DESC
+LIMIT 10;
 ```
 
 Please explore this data and provide insights about:
@@ -322,8 +396,13 @@ Please explore this data and provide insights about:
 - How much extra electricity does an Airbnb guest add per day?
 - How well does the studio retain heat? (Correlation between inside/outside temp and energy)
 
-Then generate a beautiful HTML report with all this data and these 
-insights. Create it as a single standalone file (use CDN links to 
+**Look specifically for anomalies**:
+- Days with unusually high kWh-per-degree-below-15°C ratios (use the anomaly query)
+- Large variations in overnight (00:00-07:00) studio usage between similar days (indicates EV charging)
+- Studio temperature patterns: if data available, look for the daily heating cycle
+
+Then generate a beautiful HTML report with all this data and these
+insights. Create it as a single standalone file (use CDN links to
 Tailwind, graphing libraries etc if necessary) that I can upload to S3.
 """
 
