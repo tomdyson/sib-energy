@@ -218,7 +218,7 @@ ERRORS=()
 # ----------------------------------------------------------------------------
 # 1. Import EON data (last 7 days)
 # ----------------------------------------------------------------------------
-log "Step 1/7: Fetching EON data..."
+log "Step 1/8: Fetching EON data..."
 CONSUMPTION_CSV="$SCRIPT_DIR/consumption.csv"
 register_temp_file "$CONSUMPTION_CSV"
 
@@ -241,7 +241,7 @@ fi
 # ----------------------------------------------------------------------------
 # 2. Import Huum data (current month)
 # ----------------------------------------------------------------------------
-log "Step 2/7: Fetching Huum sauna data..."
+log "Step 2/8: Fetching Huum sauna data..."
 SAUNA_STATS="$SCRIPT_DIR/sauna-stats.txt"
 register_temp_file "$SAUNA_STATS"
 
@@ -264,7 +264,7 @@ fi
 # ----------------------------------------------------------------------------
 # 3. Import Shelly data (last 3 days)
 # ----------------------------------------------------------------------------
-log "Step 3/7: Fetching Shelly data..."
+log "Step 3/8: Fetching Shelly data..."
 if retry "energy import shelly-csv --days 3" "Shelly data import"; then
     log "Shelly data imported successfully"
 else
@@ -274,7 +274,7 @@ fi
 # ----------------------------------------------------------------------------
 # 4. Import Weather data (last 7 days)
 # ----------------------------------------------------------------------------
-log "Step 4/7: Fetching Weather data..."
+log "Step 4/8: Fetching Weather data..."
 if retry "energy import weather --days 7" "Weather data import"; then
     log "Weather data imported successfully"
 else
