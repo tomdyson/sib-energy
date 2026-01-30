@@ -70,6 +70,9 @@ energy import airbnb-csv --file path/to/airbnb_.csv
 energy summary --date 2025-01-15
 energy report --days 7
 energy report --days 30 --json
+
+# Generate HTML report with daily hourly usage charts
+energy daily-report --days 30 -o daily-hourly-report.html
 ```
 
 ## CLI Commands
@@ -98,6 +101,9 @@ energy sessions list          # List recent sessions
 energy summary --date DATE    # Daily summary
 energy report --days N        # Period summary
 energy report --days N --json # JSON output for LLM analysis
+
+energy daily-report           # Generate HTML report with daily hourly charts
+                              # Options: --days, --output
 ```
 
 ## Configuration
