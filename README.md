@@ -150,7 +150,7 @@ You have access to a SQLite database containing home energy usage data. The data
 ## Background
 
 This is a three-phase house in the UK. The electricity tariff has cheap overnight rates (midnight to 7am). The household has:
-- An electric sauna (significant energy consumer, ~6kW)
+- An electric sauna (significant energy consumer, ~9kW)
 - A studio on a dedicated circuit, monitored separately via Shelly Pro 3EM
 
 ## Data Sources
@@ -287,11 +287,17 @@ Please explore this data and provide insights about:
 ## Cron Setup (Raspberry Pi)
 
 ```cron
-# Fetch EON data daily at 6am
-0 6 * * * cd /home/pi/home-energy-analysis && ./venv/bin/energy import eon --csv <(uvx eonapi export)
+# Import Shelly studio data hourly (local network, fast)
+0 * * * * cd /home/tom/sib-energy && ./venv/bin/energy import shelly-csv --days 1
+
+# Fetch EON data daily at 6am (has 24-48h delay anyway)
+0 6 * * * cd /home/tom/sib-energy && ./venv/bin/energy import eon --csv <(uvx eonapi export)
+
+# Recalculate costs after new data arrives
+30 6 * * * cd /home/tom/sib-energy && ./venv/bin/energy tariff update-costs
 
 # Generate daily summary
-0 7 * * * cd /home/pi/home-energy-analysis && ./venv/bin/energy summary >> /var/log/energy-summary.log
+0 7 * * * cd /home/tom/sib-energy && ./venv/bin/energy summary >> /var/log/energy-summary.log
 ```
 
 ## Development
