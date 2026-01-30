@@ -131,15 +131,19 @@ Temperature sensor data from multiple sources.
 - `temperature_c`: Temperature in Celsius
 
 ### sauna_sessions
-Detected sauna usage sessions, derived from temperature patterns.
-- `start_time`, `end_time`: Session boundaries
-- `duration_minutes`: Total session length (including heating and cooldown)
+Detected sauna usage sessions, derived from temperature patterns and correlated with electricity data.
+- `start_time`, `end_time`: Session boundaries (from temperature sensor)
+- `duration_minutes`: Total session length including cooldown (from temperature)
 - `peak_temperature_c`: Maximum temperature reached
-- `estimated_kwh`: (Future) Correlated electricity usage
+- `heating_minutes`: Actual active heating time (from electricity analysis)
+- `estimated_kwh`: Total electricity consumed during heating
+- `cheap_kwh`: kWh consumed during cheap rate (00:00-07:00)
+- `peak_kwh`: kWh consumed during peak rate (07:00-24:00)
+- `cost_pence`: Calculated electricity cost
 
-**Important**: Detected durations include cooldown time when the sauna is not drawing power.
-Actual heating is typically 1.5-2.5 hours. To identify active heating periods, look for
-(EON - Studio) slots where consumption > 3 kWh (the 9kW heater draws ~4.5 kWh per 30-min slot).
+**How heating is detected**: Active heating is identified by analyzing (EON - Studio) consumption.
+When this exceeds 3 kWh per 30-min slot, the 9kW heater is running (~4.5 kWh/slot at full power).
+This is more accurate than temperature-based duration which includes passive cooldown time.
 
 ### tariffs / tariff_rates
 Time-of-use electricity pricing:
@@ -213,32 +217,18 @@ HAVING studio_percent > 50
 ORDER BY studio_percent DESC;
 
 
--- Sauna sessions with main house electricity (EON minus studio)
--- Only counts slots > 3 kWh which indicates active heating
+-- Sauna sessions with cost breakdown (pre-calculated from electricity data)
 SELECT
-    s.start_time,
-    s.peak_temperature_c,
-    COUNT(*) * 30 as heating_mins,
-    ROUND(SUM(e.consumption_kwh - COALESCE(sh.consumption_kwh, 0)), 1) as sauna_kwh,
-    ROUND(SUM(
-        CASE WHEN TIME(e.interval_start) < '07:00'
-             THEN (e.consumption_kwh - COALESCE(sh.consumption_kwh, 0)) * 0.07
-             ELSE (e.consumption_kwh - COALESCE(sh.consumption_kwh, 0)) * 0.25
-        END), 2) as cost_gbp
-FROM sauna_sessions s
-LEFT JOIN electricity_readings e ON
-    e.interval_start >= s.start_time
-    AND e.interval_start < datetime(s.start_time, '+180 minutes')
-    AND e.source = 'eon'
-    AND (e.consumption_kwh - COALESCE(
-        (SELECT sh.consumption_kwh FROM electricity_readings sh
-         WHERE sh.interval_start = e.interval_start
-         AND sh.source = 'shelly_studio_phase'), 0)) > 3.0
-LEFT JOIN electricity_readings sh ON
-    e.interval_start = sh.interval_start
-    AND sh.source = 'shelly_studio_phase'
-GROUP BY s.id
-ORDER BY s.start_time DESC;
+    DATE(start_time) as date,
+    TIME(start_time) as start,
+    peak_temperature_c,
+    heating_minutes,
+    estimated_kwh as total_kwh,
+    cheap_kwh,
+    peak_kwh,
+    ROUND(cost_pence / 100, 2) as cost_gbp
+FROM sauna_sessions
+ORDER BY start_time DESC;
 
 -- Weather correlation: Daily average temp vs total consumption
 SELECT 

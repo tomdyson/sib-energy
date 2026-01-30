@@ -462,9 +462,15 @@ def sessions_cmd():
 @sessions_cmd.command("detect")
 @click.pass_context
 def sessions_detect(ctx):
-    """Detect sauna sessions from temperature data."""
+    """Detect sauna sessions from temperature data and calculate energy usage.
+
+    Sessions are detected from temperature patterns, then correlated with
+    electricity data (EON - Studio) to calculate actual heating consumption.
+    """
     result = sessions.refresh_sessions(ctx.obj["db_path"])
     console.print(f"[green]Detected {result['imported']} sessions[/green]")
+    if result.get("kwh_updated"):
+        console.print(f"[green]Calculated energy usage for {result['kwh_updated']} sessions[/green]")
     if result["skipped"]:
         console.print(f"[yellow]Skipped {result['skipped']} existing sessions[/yellow]")
 
