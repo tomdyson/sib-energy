@@ -82,11 +82,17 @@ This is a three-phase house in the UK. The electricity tariff has cheap overnigh
 
 There is an EV, which is connected to the studio circuit. We try to run this during cheap periods as much as possible.
 
-There is a pool, unheated. We run the 1kw pump for 7 hours a day in summer, 6 hours in winter. 
-It's scheduled to run during cheap periods. This is on the studio circuit. 
+There is a pool, unheated. We run the 1kw pump for 7 hours a day in summer, 6 hours in winter.
+It's scheduled to run during cheap periods. This is on the studio circuit.
 
-The studio (and its water) is heated by an 11kw electric boiler. 
+The studio is heated by an 11kW electric boiler that supplies both radiators (space heating) and a small hot water tank.
 It's mainly used for Airbnb guests. It's expensive to heat!
+
+**Interpreting studio circuit patterns**:
+- Overnight spikes (00:00-07:00) are EXPECTED - this is EV charging and pool pump running during cheap rates. This is good behaviour, not an anomaly.
+- Evening peaks (17:00-19:00) are the boiler running radiators and hot water - this happens at expensive peak rates and is a potential optimization target.
+- Midday studio usage should be minimal (~0.1-0.2 kWh/slot) unless guests are present.
+- Studio usage correlates strongly with outdoor temperature (colder = more heating demand).
 
 Note: the sauna is on the main house circuit, so you can look at (EON total - Studio) 
 during sauna sessions to see actual heating patterns and costs.
@@ -156,11 +162,14 @@ Time-of-use electricity pricing:
    - Calculate avg daily studio kWh when occupied vs unoccupied.
    - Estimate the electricity cost per booking.
 3. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
+   - Focus on PEAK HOUR usage that could move to cheap hours (e.g., evening boiler demand for radiators/hot water)
+   - Don't flag overnight usage as a problem - that's when EV/pool SHOULD run
 4. **Sauna correlation**: How much do Sauna sessions cost? How much more do they cost when the outside temperature is low?
 5. **Weather correlation**: How does outside temperature affect energy consumption? (heating demand)
-6. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
+6. **Baseline detection**: What's the house's baseload? What's the studio's baseload when idle?
 7. **Usage patterns**: Daily/weekly patterns? When is studio most active?
 8. **Peak identification**: What times have highest consumption? Is it studio-driven?
+   - The evening peak (17:00-19:00) is typically the most expensive period to optimize
 
 ## Key Queries
 
@@ -280,8 +289,10 @@ ORDER BY r.start_date DESC;
 
 Please explore this data and provide insights about:
 - When does the studio have an outsized impact on overall energy use?
-- Are there opportunities to shift studio usage to cheap overnight hours?
+- Are there opportunities to shift PEAK HOUR studio usage (especially evening heating demand) to cheap overnight hours?
 - How predictable is studio usage compared to total house usage?
+- What's the cost difference between sauna sessions started during cheap vs peak hours?
+- How much extra electricity does an Airbnb guest add per day?
 
 Then generate a beautiful HTML report with all this data and these 
 insights. Create it as a single standalone file (use CDN links to 
