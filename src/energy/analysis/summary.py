@@ -75,7 +75,7 @@ def get_period_summary(
 ) -> dict:
     """Generate a summary for a date range."""
     with get_connection(db_path) as conn:
-        # Get electricity totals
+        # Get total house electricity (EON smart meter)
         elec_row = conn.execute(
             """SELECT
                    SUM(consumption_kwh) as total_kwh,
@@ -84,18 +84,41 @@ def get_period_summary(
                    MIN(interval_start) as earliest,
                    MAX(interval_start) as latest
                FROM electricity_readings
-               WHERE interval_start >= ? AND interval_start <= ?""",
+               WHERE source = 'eon' AND interval_start >= ? AND interval_start <= ?""",
             (start.isoformat(), end.isoformat()),
         ).fetchone()
 
-        # Daily breakdown
+        # Get studio circuit (Shelly - subset of total)
+        studio_row = conn.execute(
+            """SELECT
+                   SUM(consumption_kwh) as total_kwh,
+                   SUM(cost_pence) as total_cost,
+                   COUNT(*) as count
+               FROM electricity_readings
+               WHERE source = 'shelly_studio_phase' AND interval_start >= ? AND interval_start <= ?""",
+            (start.isoformat(), end.isoformat()),
+        ).fetchone()
+
+        # Daily breakdown (EON only for totals)
         daily_rows = conn.execute(
             """SELECT
                    DATE(interval_start) as day,
                    SUM(consumption_kwh) as kwh,
                    SUM(cost_pence) as cost
                FROM electricity_readings
-               WHERE interval_start >= ? AND interval_start <= ?
+               WHERE source = 'eon' AND interval_start >= ? AND interval_start <= ?
+               GROUP BY DATE(interval_start)
+               ORDER BY day""",
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+
+        # Studio daily breakdown
+        studio_daily_rows = conn.execute(
+            """SELECT
+                   DATE(interval_start) as day,
+                   SUM(consumption_kwh) as kwh
+               FROM electricity_readings
+               WHERE source = 'shelly_studio_phase' AND interval_start >= ? AND interval_start <= ?
                GROUP BY DATE(interval_start)
                ORDER BY day""",
             (start.isoformat(), end.isoformat()),
@@ -107,6 +130,14 @@ def get_period_summary(
     days_count = len(daily_rows)
     total_kwh = elec_row["total_kwh"] or 0
     total_cost = elec_row["total_cost"] or 0
+    studio_kwh = studio_row["total_kwh"] or 0
+    studio_cost = studio_row["total_cost"] or 0
+
+    # Calculate studio as % of total
+    studio_percent = round(studio_kwh / total_kwh * 100, 1) if total_kwh > 0 else 0
+
+    # Build studio daily map for comparison
+    studio_daily_map = {row["day"]: row["kwh"] for row in studio_daily_rows}
 
     return {
         "period": {
@@ -122,6 +153,20 @@ def get_period_summary(
         "averages": {
             "daily_kwh": round(total_kwh / days_count, 2) if days_count > 0 else 0,
             "daily_cost_pounds": round(total_cost / 100 / days_count, 2) if days_count > 0 else 0,
+        },
+        "studio": {
+            "kwh": round(studio_kwh, 2),
+            "cost_pounds": round(studio_cost / 100, 2) if studio_cost else 0,
+            "percent_of_total": studio_percent,
+            "daily_breakdown": [
+                {
+                    "date": row["day"],
+                    "studio_kwh": round(studio_daily_map.get(row["day"], 0), 2),
+                    "total_kwh": round(row["kwh"], 2),
+                    "studio_percent": round(studio_daily_map.get(row["day"], 0) / row["kwh"] * 100, 1) if row["kwh"] > 0 else 0,
+                }
+                for row in daily_rows
+            ],
         },
         "daily_breakdown": [
             {"date": row["day"], "kwh": round(row["kwh"], 2), "cost_pounds": round((row["cost"] or 0) / 100, 2)}
@@ -182,6 +227,15 @@ def format_period_summary_text(summary: dict) -> str:
         f"  - Consumption: {summary['averages']['daily_kwh']} kWh/day",
         f"  - Cost: £{summary['averages']['daily_cost_pounds']:.2f}/day",
     ]
+
+    # Studio breakdown (if data available)
+    if summary.get("studio", {}).get("kwh", 0) > 0:
+        lines.extend([
+            "",
+            "Studio:",
+            f"  - Consumption: {summary['studio']['kwh']} kWh ({summary['studio']['percent_of_total']}% of total)",
+            f"  - Cost: £{summary['studio']['cost_pounds']:.2f}",
+        ])
 
     if summary["sauna"]["session_count"] > 0:
         lines.extend([
