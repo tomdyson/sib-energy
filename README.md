@@ -37,9 +37,10 @@ energy import shelly-csv --ip 192.168.6.124 --channel 2 --days 7
 uvx eonapi export > consumption.csv
 energy import eon --csv consumption.csv
 
-# Import sauna temperature data
-uvx huum stats --month 2025-01 > sauna.txt
-energy import huum --file sauna.txt
+# Import sauna temperature data (requires huum-cli in venv)
+pip install huum-cli  # if not already installed
+huum statistics --all > sauna-stats.txt
+energy import huum --file sauna-stats.txt
 
 # Detect sauna sessions from temperature data
 energy sessions detect
