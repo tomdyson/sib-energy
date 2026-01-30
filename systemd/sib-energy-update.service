@@ -1,0 +1,34 @@
+[Unit]
+Description=SIB Energy Database Update
+Documentation=file:///home/tom/sib-energy/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=tom
+Group=tom
+WorkingDirectory=/home/tom/sib-energy
+ExecStart=/home/tom/sib-energy/update_db.sh
+TimeoutStartSec=900
+Nice=10
+
+# Environment
+Environment=HOME=/home/tom
+
+# Logging (also goes to journald)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sib-energy
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/tom/.local/share/home-energy
+ReadWritePaths=/var/log/sib-energy
+ReadWritePaths=/tmp
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

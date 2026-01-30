@@ -1,0 +1,19 @@
+[Unit]
+Description=Run SIB Energy Database Update nightly
+Documentation=file:///home/tom/sib-energy/README.md
+
+[Timer]
+# Run at 6:00 AM every day
+OnCalendar=*-*-* 06:00:00
+
+# Add some randomness to avoid exact timing (up to 15 min)
+RandomizedDelaySec=900
+
+# Run immediately if we missed the last scheduled time (e.g., system was off)
+Persistent=true
+
+# Accuracy - allow some slack for power saving
+AccuracySec=60
+
+[Install]
+WantedBy=timers.target
