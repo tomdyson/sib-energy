@@ -55,9 +55,9 @@ log "Importing Huum data..."
 energy import huum --file sauna-stats.txt
 rm sauna-stats.txt
 
-# 3. Import Shelly data (last 7 days)
+# 3. Import Shelly data (last 3 days)
 log "Fetching Shelly data..."
-energy import shelly-csv --days 7
+energy import shelly-csv --days 3
 
 # 4. Import Weather data (last 7 days)
 log "Fetching Weather data..."
