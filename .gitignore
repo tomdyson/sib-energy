@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment
+.env
+.env.local
+
+# Data files - don't commit large CSVs or databases
+*.csv
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+energy-analysis.db
+channel_*.csv
+consumption.csv
+sauna-*.txt
+
+# Claude/AI artifacts
+.claude/
+.gemini/
+
+# Temporary files
+*.tmp
+*.bak
+*.log

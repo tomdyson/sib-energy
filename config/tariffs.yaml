@@ -1,0 +1,15 @@
+# Electricity tariff configuration
+# Rates are in pence per kWh
+
+tariffs:
+  - name: "EON Next Flux"
+    valid_from: "2024-01-01"
+    rates:
+      # Cheap overnight rate (midnight to 7am)
+      - start: "00:00"
+        end: "07:00"
+        rate: 7
+      # Standard daytime rate
+      - start: "07:00"
+        end: "00:00"
+        rate: 25
