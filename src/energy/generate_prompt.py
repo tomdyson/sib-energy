@@ -1,0 +1,217 @@
+"""Generate the agent prompt for energy data analysis.
+
+Reads tariff configuration from config/tariffs.yaml to dynamically include
+current tariff rates in the prompt.
+
+Usage:
+    python -m energy.generate_prompt
+    # or
+    energy prompt
+"""
+
+from pathlib import Path
+
+import yaml
+
+
+def get_config_path() -> Path:
+    """Find the tariffs.yaml config file."""
+    candidates = [
+        Path.cwd() / "config" / "tariffs.yaml",
+        Path(__file__).parent.parent.parent.parent / "config" / "tariffs.yaml",
+        Path.home() / ".config" / "sib-energy" / "tariffs.yaml",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    raise FileNotFoundError("Could not find config/tariffs.yaml")
+
+
+def load_tariffs() -> dict:
+    """Load tariff data from YAML."""
+    config_path = get_config_path()
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+
+def format_tariff_description(tariffs_data: dict) -> str:
+    """Format tariff rates for the prompt."""
+    lines = []
+    for tariff in tariffs_data.get("tariffs", []):
+        name = tariff.get("name", "Unknown")
+        valid_from = tariff.get("valid_from", "Unknown")
+        lines.append(f"**{name}** (from {valid_from}):")
+        for rate in tariff.get("rates", []):
+            start = rate.get("start", "??:??")
+            end = rate.get("end", "??:??")
+            pence = rate.get("rate", 0)
+            lines.append(f"- {start} to {end}: {pence}p/kWh")
+    return "\n".join(lines)
+
+
+def format_tariff_for_section(tariffs_data: dict) -> str:
+    """Format tariff info for the database schema section."""
+    lines = []
+    for tariff in tariffs_data.get("tariffs", []):
+        for rate in tariff.get("rates", []):
+            start = rate.get("start", "??:??")
+            end = rate.get("end", "??:??")
+            pence = rate.get("rate", 0)
+            # Describe the rate period
+            if start == "00:00" and end == "07:00":
+                lines.append(f"- Cheap rate: {start} to {end} ({pence}p/kWh)")
+            else:
+                lines.append(f"- Standard rate: {start} to {end} ({pence}p/kWh)")
+    return "\n".join(lines)
+
+
+def generate_prompt() -> str:
+    """Generate the full agent prompt with dynamic tariff information."""
+    tariffs_data = load_tariffs()
+    tariff_section = format_tariff_for_section(tariffs_data)
+
+    prompt = f"""You have access to a SQLite database containing home energy usage data. The database is at ./energy-analysis.db (or ~/.local/share/home-energy/energy.db).
+
+## Background
+
+This is a three-phase house in the UK. The electricity tariff has cheap overnight rates (midnight to 7am). The household has:
+- An electric sauna (significant energy consumer, ~9kW)
+- A studio on a dedicated circuit, monitored separately via Shelly Pro 3EM
+
+## Data Sources
+
+**IMPORTANT**: The data has two sources with different meanings:
+
+1. **EON** (`source = 'eon'`): Whole-house smart meter data from the electricity supplier.
+   - This is the TOTAL consumption for the entire house.
+   - Half-hourly intervals.
+
+2. **Shelly Studio** (`source = 'shelly_studio_phase'`): Per-minute data from a Shelly Pro 3EM monitoring the studio circuit.
+   - This is a SUBSET of the total (the studio is part of the house).
+   - Aggregated to 30-minute intervals to match EON data.
+   - Use this to understand what proportion of total usage is from the studio.
+
+When analyzing consumption:
+- Use EON for total house consumption
+- Use Shelly to understand studio's share of the total
+- Never add them together (that would double-count studio usage)
+
+## Database Schema
+
+### electricity_readings
+- `source`: 'eon' (whole house) or 'shelly_studio_phase' (studio circuit only)
+- `interval_start`: ISO 8601 timestamp with timezone (e.g., '2026-01-15T05:30:00+00:00')
+- `interval_end`: End of 30-minute interval
+- `consumption_kwh`: Energy consumed in this interval
+- `cost_pence`: Calculated cost based on time-of-use tariff
+
+### temperature_readings
+Temperature sensor data, primarily from the sauna.
+- `sensor_id`: 'sauna' (future: other sensors)
+- `timestamp`: ISO 8601 timestamp
+- `temperature_c`: Temperature in Celsius
+
+### sauna_sessions
+Detected sauna usage sessions, derived from temperature patterns.
+- `start_time`, `end_time`: Session boundaries
+- `duration_minutes`: Total session length (including heating and cooldown)
+- `peak_temperature_c`: Maximum temperature reached
+- `estimated_kwh`: (Future) Correlated electricity usage
+
+### tariffs / tariff_rates
+Time-of-use electricity pricing:
+{tariff_section}
+
+## Analysis Goals
+
+1. **Studio impact**: What % of total usage comes from the studio? Which days does it dominate?
+2. **Cost optimization**: How much usage is during cheap vs expensive hours? What could be shifted?
+3. **Sauna correlation**: The sauna is in the studio - how do sauna sessions affect studio usage?
+4. **Baseline detection**: What's the house's baseload? What's the studio's baseload?
+5. **Usage patterns**: Daily/weekly patterns? When is studio most active?
+6. **Peak identification**: What times have highest consumption? Is it studio-driven?
+
+## Key Queries
+
+```sql
+-- Studio as percentage of total by day
+SELECT
+    DATE(e.interval_start) as day,
+    ROUND(SUM(e.consumption_kwh), 2) as total_kwh,
+    ROUND(SUM(s.consumption_kwh), 2) as studio_kwh,
+    ROUND(SUM(s.consumption_kwh) / SUM(e.consumption_kwh) * 100, 1) as studio_percent
+FROM electricity_readings e
+LEFT JOIN electricity_readings s ON
+    DATE(e.interval_start) = DATE(s.interval_start)
+    AND TIME(e.interval_start) = TIME(s.interval_start)
+    AND s.source = 'shelly_studio_phase'
+WHERE e.source = 'eon'
+GROUP BY DATE(e.interval_start)
+ORDER BY day DESC;
+
+-- Daily totals with cost breakdown
+SELECT
+    DATE(interval_start) as day,
+    ROUND(SUM(consumption_kwh), 2) as kwh,
+    ROUND(SUM(cost_pence)/100, 2) as cost_gbp,
+    ROUND(SUM(CASE WHEN TIME(interval_start) < '07:00' THEN consumption_kwh ELSE 0 END), 2) as cheap_kwh
+FROM electricity_readings
+WHERE source = 'eon'
+GROUP BY DATE(interval_start)
+ORDER BY day DESC;
+
+-- Hourly studio usage pattern
+SELECT
+    CAST(STRFTIME('%H', interval_start) AS INTEGER) as hour,
+    ROUND(AVG(consumption_kwh), 3) as avg_kwh
+FROM electricity_readings
+WHERE source = 'shelly_studio_phase'
+GROUP BY hour
+ORDER BY hour;
+
+-- Days when studio exceeded 50% of total
+SELECT
+    DATE(e.interval_start) as day,
+    ROUND(SUM(e.consumption_kwh), 2) as total_kwh,
+    ROUND(SUM(s.consumption_kwh), 2) as studio_kwh,
+    ROUND(SUM(s.consumption_kwh) / SUM(e.consumption_kwh) * 100, 1) as studio_percent
+FROM electricity_readings e
+LEFT JOIN electricity_readings s ON
+    DATE(e.interval_start) = DATE(s.interval_start)
+    AND TIME(e.interval_start) = TIME(s.interval_start)
+    AND s.source = 'shelly_studio_phase'
+WHERE e.source = 'eon'
+GROUP BY DATE(e.interval_start)
+HAVING studio_percent > 50
+ORDER BY studio_percent DESC;
+
+-- Sauna sessions with studio electricity during session
+SELECT
+    s.start_time,
+    s.duration_minutes,
+    s.peak_temperature_c,
+    ROUND(SUM(e.consumption_kwh), 2) as studio_kwh_during_session
+FROM sauna_sessions s
+LEFT JOIN electricity_readings e ON
+    e.interval_start >= s.start_time
+    AND e.interval_start <= s.end_time
+    AND e.source = 'shelly_studio_phase'
+GROUP BY s.id
+ORDER BY s.start_time DESC;
+```
+
+Please explore this data and provide insights about:
+- When does the studio have an outsized impact on overall energy use?
+- Are there opportunities to shift studio usage to cheap overnight hours?
+- How predictable is studio usage compared to total house usage?"""
+
+    return prompt
+
+
+def main():
+    """Print the generated prompt to stdout."""
+    print(generate_prompt())
+
+
+if __name__ == "__main__":
+    main()

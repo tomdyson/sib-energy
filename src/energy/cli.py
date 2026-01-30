@@ -463,6 +463,17 @@ def report(ctx, days, as_json):
         console.print(summary.format_period_summary_text(data))
 
 
+@cli.command()
+def prompt():
+    """Output the agent prompt for LLM analysis.
+
+    The prompt is dynamically generated from config/tariffs.yaml,
+    so it always reflects the current tariff rates.
+    """
+    from .generate_prompt import generate_prompt
+    print(generate_prompt())
+
+
 # Alias for summary command
 cli.add_command(summary_cmd, name="summary")
 
