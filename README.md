@@ -28,6 +28,9 @@ energy database init
 # Run the nightly update script manually
 ./update_db.sh
 
+# Run with debug output if you encounter issues
+./update_db.sh --debug
+
 # Configure tariffs (edit config/tariffs.yaml first)
 energy tariff load
 
