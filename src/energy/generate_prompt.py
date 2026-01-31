@@ -9,6 +9,8 @@ Usage:
     energy prompt
 """
 
+import re
+from datetime import date, timedelta
 from pathlib import Path
 
 import yaml
@@ -65,10 +67,69 @@ def format_tariff_for_section(tariffs_data: dict) -> str:
     return "\n".join(lines)
 
 
+def get_diary_path() -> Path | None:
+    """Find the diary.md config file."""
+    candidates = [
+        Path.cwd() / "config" / "diary.md",
+        Path(__file__).parent.parent.parent.parent / "config" / "diary.md",
+        Path.home() / ".config" / "sib-energy" / "diary.md",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
+
+
+def load_diary_entries(days: int = 60) -> list[tuple[date, str]]:
+    """Load diary entries from the last N days.
+
+    Returns a list of (date, description) tuples, sorted by date descending.
+    """
+    diary_path = get_diary_path()
+    if not diary_path:
+        return []
+
+    cutoff = date.today() - timedelta(days=days)
+    entries = []
+    date_pattern = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+(.+)$")
+
+    with open(diary_path) as f:
+        for line in f:
+            line = line.strip()
+            match = date_pattern.match(line)
+            if match:
+                try:
+                    entry_date = date.fromisoformat(match.group(1))
+                    if entry_date >= cutoff:
+                        entries.append((entry_date, match.group(2)))
+                except ValueError:
+                    continue
+
+    return sorted(entries, key=lambda x: x[0], reverse=True)
+
+
+def format_diary_section(days: int = 60) -> str:
+    """Format diary entries for inclusion in the prompt."""
+    entries = load_diary_entries(days)
+    if not entries:
+        return ""
+
+    lines = ["## Recent System Changes", ""]
+    lines.append(
+        "The following notes describe recent changes that may affect energy patterns:"
+    )
+    lines.append("")
+    for entry_date, description in entries:
+        lines.append(f"- **{entry_date}**: {description}")
+
+    return "\n".join(lines)
+
+
 def generate_prompt() -> str:
     """Generate the full agent prompt with dynamic tariff information."""
     tariffs_data = load_tariffs()
     tariff_section = format_tariff_for_section(tariffs_data)
+    diary_section = format_diary_section()
 
     prompt = f"""You have access to a SQLite database containing home energy usage data. 
     
@@ -94,8 +155,10 @@ It's mainly used for Airbnb guests. It's expensive to heat!
 - Midday studio usage should be minimal (~0.1-0.2 kWh/slot) unless guests are present.
 - Studio usage correlates strongly with outdoor temperature (colder = more heating demand).
 
-Note: the sauna is on the main house circuit, so you can look at (EON total - Studio) 
+Note: the sauna is on the main house circuit, so you can look at (EON total - Studio)
 during sauna sessions to see actual heating patterns and costs.
+
+{diary_section}
 
 ## Data Sources
 
