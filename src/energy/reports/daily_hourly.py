@@ -15,6 +15,8 @@ def get_hourly_data_by_day(db_path: Path | None = None, days: int = 30) -> list[
         - hours: list of hour numbers with data
         - studio: list of kWh values for studio circuit
         - house: list of kWh values for house (EON - studio)
+        - studio_cost: list of cost in pence for studio circuit
+        - house_cost: list of cost in pence for house
     """
     with db.get_connection(db_path) as conn:
         # Get the date range
@@ -36,7 +38,9 @@ def get_hourly_data_by_day(db_path: Path | None = None, days: int = 30) -> list[
                     DATE(e.interval_start) as day,
                     CAST(STRFTIME('%H', e.interval_start) AS INTEGER) as hour,
                     ROUND(SUM(COALESCE(s.consumption_kwh, 0)), 2) as studio,
-                    ROUND(SUM(e.consumption_kwh - COALESCE(s.consumption_kwh, 0)), 2) as house
+                    ROUND(SUM(e.consumption_kwh - COALESCE(s.consumption_kwh, 0)), 2) as house,
+                    ROUND(SUM(COALESCE(s.cost_pence, 0)), 2) as studio_cost,
+                    ROUND(SUM(COALESCE(e.cost_pence, 0) - COALESCE(s.cost_pence, 0)), 2) as house_cost
                 FROM electricity_readings e
                 LEFT JOIN electricity_readings s ON
                     e.interval_start = s.interval_start
@@ -48,7 +52,9 @@ def get_hourly_data_by_day(db_path: Path | None = None, days: int = 30) -> list[
                 day,
                 GROUP_CONCAT(hour, ',') as hours,
                 GROUP_CONCAT(studio, ',') as studio_data,
-                GROUP_CONCAT(house, ',') as house_data
+                GROUP_CONCAT(house, ',') as house_data,
+                GROUP_CONCAT(studio_cost, ',') as studio_cost_data,
+                GROUP_CONCAT(house_cost, ',') as house_cost_data
             FROM hourly
             WHERE day >= ? AND day <= ?
             GROUP BY day
@@ -64,6 +70,8 @@ def get_hourly_data_by_day(db_path: Path | None = None, days: int = 30) -> list[
                 "hours": [int(h) for h in row["hours"].split(",")],
                 "studio": [float(v) for v in row["studio_data"].split(",")],
                 "house": [float(v) for v in row["house_data"].split(",")],
+                "studio_cost": [float(v) for v in row["studio_cost_data"].split(",")],
+                "house_cost": [float(v) for v in row["house_cost_data"].split(",")],
             })
 
         return result
@@ -124,13 +132,17 @@ def generate_daily_hourly_report(db_path: Path | None = None, days: int = 30) ->
         hours_js = repr(data["hours"])
         studio_js = repr(data["studio"])
         house_js = repr(data["house"])
+        studio_cost_js = repr(data["studio_cost"])
+        house_cost_js = repr(data["house_cost"])
 
         js_data_items.append(f"""            {{
                 day: '{data["day"]}',
                 label: '{label}',
                 hours: {hours_js},
                 studio: {studio_js},
-                house: {house_js}
+                house: {house_js},
+                studioCost: {studio_cost_js},
+                houseCost: {house_cost_js}
             }}""")
 
     js_data = ",\n".join(js_data_items)
@@ -188,15 +200,21 @@ def generate_daily_hourly_report(db_path: Path | None = None, days: int = 30) ->
             const studioTotal = day.studio.reduce((a, b) => a + b, 0).toFixed(1);
             const houseTotal = day.house.reduce((a, b) => a + b, 0).toFixed(1);
             const total = (parseFloat(studioTotal) + parseFloat(houseTotal)).toFixed(1);
+            const studioCostTotal = (day.studioCost.reduce((a, b) => a + b, 0) / 100).toFixed(2);
+            const houseCostTotal = (day.houseCost.reduce((a, b) => a + b, 0) / 100).toFixed(2);
+            const totalCost = (parseFloat(studioCostTotal) + parseFloat(houseCostTotal)).toFixed(2);
 
             card.innerHTML = `
                 <div class="flex justify-between items-center mb-2">
                     <h3 class="font-bold text-gray-800">${{day.label}}</h3>
-                    <span class="text-xs text-gray-500">${{total}} kWh</span>
+                    <div class="text-right">
+                        <span class="text-xs text-gray-500">${{total}} kWh</span>
+                        <span class="text-xs font-semibold text-green-700 ml-1">\u00a3${{totalCost}}</span>
+                    </div>
                 </div>
                 <div class="text-xs text-gray-400 mb-2">
-                    <span class="text-amber-600">Studio: ${{studioTotal}}</span> |
-                    <span class="text-blue-600">House: ${{houseTotal}}</span>
+                    <span class="text-amber-600">Studio: ${{studioTotal}} kWh / \u00a3${{studioCostTotal}}</span> |
+                    <span class="text-blue-600">House: ${{houseTotal}} kWh / \u00a3${{houseCostTotal}}</span>
                 </div>
                 <div class="h-40">
                     <canvas id="chart-${{index}}"></canvas>

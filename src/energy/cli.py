@@ -585,8 +585,9 @@ def prompt():
 @cli.command("daily-report")
 @click.option("--days", default=30, help="Number of days to include (default: 30)")
 @click.option("--output", "-o", type=click.Path(), help="Output file path (default: daily-hourly-report.html)")
+@click.option("--serve", is_flag=True, default=False, help="Start a web server on 0.0.0.0:8888 to share the report")
 @click.pass_context
-def daily_report(ctx, days, output):
+def daily_report(ctx, days, output, serve):
     """Generate daily hourly usage pattern report.
 
     Creates an HTML report showing hourly Studio vs House consumption
@@ -600,6 +601,38 @@ def daily_report(ctx, days, output):
 
     output_path.write_text(html)
     console.print(f"[green]Report saved to {output_path}[/green]")
+
+    if serve:
+        import http.server
+        import socket
+        import functools
+
+        # Detect local IP address
+        local_ip = None
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+        except Exception:
+            local_ip = "0.0.0.0"
+
+        port = 8888
+        directory = str(output_path.parent.resolve())
+        filename = output_path.name
+
+        handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)
+        server = http.server.HTTPServer(("0.0.0.0", port), handler)
+
+        url = f"http://{local_ip}:{port}/{filename}"
+        console.print(f"\n[bold green]Serving report at:[/bold green] [link={url}]{url}[/link]")
+        console.print("[dim]Press Ctrl+C to stop[/dim]")
+
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Server stopped[/yellow]")
+            server.server_close()
 
 
 # Alias for summary command
